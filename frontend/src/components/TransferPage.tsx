@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ArrowUpDown, Zap } from "lucide-react";
 
 import Navbar from "@/components/Navbar";
-import TransferCard from "@/components/TransferCard";
+import TransferCard, { SendToken } from "@/components/TransferCard";
 import ReceiveCard from "@/components/ReceiveCard";
 import BankSelector, { Bank } from "@/components/BankSelector";
 import PaymentMethodSelector, {
@@ -16,6 +16,13 @@ import PaymentMethodSelector, {
 
 /** STX/USD exchange rate — replace with live API later */
 const STX_USD_RATE = 1.23;
+
+/** USD rates per send token — replace with live API later */
+const TOKEN_USD_RATES: Record<SendToken, number> = {
+  STX: 1.23,
+  USDCx: 1.0,
+  BTC: 85000,
+};
 
 /** Fee multiplier per payment method (deducted from output) */
 const FEE_RATES: Record<PaymentMethodId, number> = {
@@ -130,13 +137,15 @@ function QuickTransferBanner() {
 function SubmitButton({
   disabled,
   amount,
+  token,
   onClick,
 }: {
   disabled: boolean;
   amount: string;
+  token: SendToken;
   onClick: () => void;
 }) {
-  const label = disabled ? "Enter an amount" : `Bridge ${amount} STX →`;
+  const label = disabled ? "Enter an amount" : `Bridge ${amount} ${token} →`;
 
   return (
     <motion.button
@@ -175,6 +184,7 @@ function SubmitButton({
 export default function TransferPage() {
   // ── Form state ──────────────────────────────────────────────────────────────
   const [sendAmount, setSendAmount] = useState("");
+  const [sendToken, setSendToken] = useState<SendToken>("STX");
   const [currency, setCurrency] = useState<Currency>("NGN");
   const [selectedBank, setSelectedBank] = useState<Bank | null>(null);
   const [accountNumber, setAccountNumber] = useState("");
@@ -185,10 +195,10 @@ export default function TransferPage() {
 
   const parsedAmount = parseFloat(sendAmount) || 0;
 
-  /** STX → USD conversion */
+  /** Token → USD conversion */
   const usdEquivalent = useMemo(
-    () => parsedAmount * STX_USD_RATE,
-    [parsedAmount]
+    () => parsedAmount * TOKEN_USD_RATES[sendToken],
+    [parsedAmount, sendToken]
   );
 
   /** Receive amount after fee deduction */
@@ -247,12 +257,14 @@ export default function TransferPage() {
           <div className="flex flex-col gap-0">
             <motion.div
               animate={{ order: swapped ? 2 : 0 }}
-              className="z-0"
+              className="relative z-20"
             >
               <TransferCard
                 value={sendAmount}
                 onChange={setSendAmount}
                 usdEquivalent={usdEquivalent}
+                token={sendToken}
+                onTokenChange={setSendToken}
               />
             </motion.div>
 
@@ -302,6 +314,7 @@ export default function TransferPage() {
           <SubmitButton
             disabled={!isReady}
             amount={sendAmount}
+            token={sendToken}
             onClick={handleSubmit}
           />
         </div>

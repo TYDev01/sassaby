@@ -1,9 +1,12 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { motion } from "framer-motion";
+import { useState, useCallback, useRef, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { ChevronDown } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+export type SendToken = "STX" | "USDCx" | "BTC";
 
 interface TransferCardProps {
   /** Controlled value from the parent */
@@ -12,22 +15,121 @@ interface TransferCardProps {
   onChange: (value: string) => void;
   /** Live USD equivalent of the entered amount */
   usdEquivalent: number;
+  /** Selected send token */
+  token: SendToken;
+  /** Notifies parent when token changes */
+  onTokenChange: (token: SendToken) => void;
 }
 
-// ─── STX Token Badge ──────────────────────────────────────────────────────────
+const TOKEN_COLORS: Record<SendToken, string> = {
+  STX: "#f97316",  // orange
+  USDCx: "#3b82f6", // blue
+  BTC: "#f59e0b",  // amber
+};
 
-function STXBadge() {
+const TOKENS: SendToken[] = ["STX", "USDCx", "BTC"];
+
+// ─── Token Dot ────────────────────────────────────────────────────────────────
+
+function TokenDot({ token }: { token: SendToken }) {
   return (
-    <motion.div
-      initial={{ scale: 0.9, opacity: 0 }}
-      animate={{ scale: 1, opacity: 1 }}
-      transition={{ delay: 0.2, type: "spring", stiffness: 300 }}
-      className="flex items-center gap-2 bg-[#1a1a1a] border border-white/10 rounded-full px-3 py-1.5"
-    >
-      {/* Orange dot representing STX */}
-      <span className="w-4 h-4 rounded-full bg-[#f97316] shrink-0" />
-      <span className="text-white text-sm font-semibold tracking-wide">STX</span>
-    </motion.div>
+    <span
+      className="w-4 h-4 rounded-full shrink-0 transition-colors duration-300"
+      style={{ backgroundColor: TOKEN_COLORS[token] }}
+    />
+  );
+}
+
+// ─── Token Dropdown ───────────────────────────────────────────────────────────
+
+function TokenDropdown({
+  selected,
+  onSelect,
+}: {
+  selected: SendToken;
+  onSelect: (t: SendToken) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  return (
+    <div ref={ref} className="relative">
+      <motion.button
+        whileTap={{ scale: 0.96 }}
+        onClick={() => setOpen((prev) => !prev)}
+        aria-label="Select token"
+        aria-expanded={open}
+        className="
+          flex items-center gap-2 bg-[#1a1a1a] border border-white/10
+          rounded-full px-3 py-1.5 focus:outline-none
+          hover:border-white/20 transition-colors duration-200
+        "
+      >
+        <TokenDot token={selected} />
+        <span className="text-white text-sm font-semibold tracking-wide">
+          {selected}
+        </span>
+        <ChevronDown
+          size={14}
+          className={`text-gray-400 transition-transform duration-200 ${
+            open ? "rotate-180" : ""
+          }`}
+        />
+      </motion.button>
+
+      <AnimatePresence>
+        {open && (
+          <motion.ul
+            role="listbox"
+            aria-label="Token options"
+            initial={{ opacity: 0, y: 6, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 6, scale: 0.97 }}
+            transition={{ duration: 0.18 }}
+            className="
+              absolute right-0 top-full mt-2 z-50
+              bg-[#1a1a1a] border border-white/10 rounded-xl
+              py-1 min-w-[110px] shadow-xl
+            "
+          >
+            {TOKENS.map((t) => (
+              <li key={t}>
+                <button
+                  role="option"
+                  aria-selected={t === selected}
+                  onClick={() => {
+                    onSelect(t);
+                    setOpen(false);
+                  }}
+                  className={`
+                    w-full flex items-center gap-2 px-3 py-2 text-sm
+                    transition-colors duration-150
+                    ${
+                      t === selected
+                        ? "text-white bg-white/5"
+                        : "text-gray-400 hover:text-white hover:bg-white/5"
+                    }
+                  `}
+                >
+                  <TokenDot token={t} />
+                  {t}
+                </button>
+              </li>
+            ))}
+          </motion.ul>
+        )}
+      </AnimatePresence>
+    </div>
   );
 }
 
@@ -36,9 +138,11 @@ function STXBadge() {
 function AmountInput({
   value,
   onChange,
+  token,
 }: {
   value: string;
   onChange: (v: string) => void;
+  token: SendToken;
 }) {
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -58,7 +162,7 @@ function AmountInput({
       placeholder="0.00"
       value={value}
       onChange={handleChange}
-      aria-label="Amount to send in STX"
+      aria-label={`Amount to send in ${token}`}
       className="
         bg-transparent text-gray-500 text-2xl font-light
         placeholder:text-gray-600 w-full focus:outline-none
@@ -97,6 +201,8 @@ export default function TransferCard({
   value,
   onChange,
   usdEquivalent,
+  token,
+  onTokenChange,
 }: TransferCardProps) {
   return (
     <motion.div
@@ -115,14 +221,14 @@ export default function TransferCard({
             You&apos;ll send
           </p>
           {/* Amount input */}
-          <AmountInput value={value} onChange={onChange} />
+          <AmountInput value={value} onChange={onChange} token={token} />
           {/* USD equivalent */}
           <USDLabel amount={usdEquivalent} />
         </div>
 
-        {/* Token badge — right aligned */}
+        {/* Token selector — right aligned */}
         <div className="pt-5">
-          <STXBadge />
+          <TokenDropdown selected={token} onSelect={onTokenChange} />
         </div>
       </div>
     </motion.div>
