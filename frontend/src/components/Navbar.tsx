@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { User, Bell } from "lucide-react";
+import { User, Bell, LayoutDashboard } from "lucide-react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -50,7 +51,7 @@ function StacksBridgeLogo() {
         </svg>
       </div>
       <span className="text-white font-semibold text-[15px] tracking-tight">
-        Stacks Bridge
+        Sassaby
       </span>
     </div>
   );
@@ -116,6 +117,8 @@ function IconButton({
 
 export default function Navbar() {
   const [activeTab, setActiveTab] = useState<NavTab>("transfer");
+  const pathname = usePathname();
+  const isAdmin = pathname === "/admin";
 
   const tabs: { label: string; key: NavTab }[] = [
     { label: "Transfer", key: "transfer" },
@@ -159,6 +162,20 @@ export default function Navbar() {
 
         {/* Action icons */}
         <div className="flex items-center gap-1">
+          <Link href="/admin" aria-label="Admin dashboard">
+            <motion.div
+              whileHover={{ scale: 1.08 }}
+              whileTap={{ scale: 0.95 }}
+              className={`w-9 h-9 flex items-center justify-center rounded-full transition-colors duration-200 cursor-pointer ${
+                isAdmin
+                  ? "text-[#f97316] bg-[#f97316]/10"
+                  : "text-gray-400 hover:text-white hover:bg-white/10"
+              }`}
+              title="Admin Dashboard"
+            >
+              <LayoutDashboard size={18} />
+            </motion.div>
+          </Link>
           <IconButton label="Account">
             <User size={18} />
           </IconButton>

@@ -11,6 +11,7 @@ import BankSelector, { Bank } from "@/components/BankSelector";
 import PaymentMethodSelector, {
   PaymentMethodId,
 } from "@/components/PaymentMethodSelector";
+import { createTransfer } from "@/lib/api";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -267,20 +268,25 @@ export default function TransferPage() {
 
   // ── Handlers ─────────────────────────────────────────────────────────────────
 
-  const handleSubmit = useCallback(() => {
-    if (!isReady || isLoading) return;
+  const handleSubmit = useCallback(async () => {
+    if (!isReady || isLoading || !selectedBank || !paymentMethod) return;
     setIsLoading(true);
-    // TODO: integrate with Stacks smart contract / backend
-    console.log("Initiating bridge transfer", {
-      sendAmount,
-      currency,
-      bank: selectedBank,
-      accountNumber,
-      paymentMethod,
-    });
-    // Simulate async — replace with real call
-    setTimeout(() => setIsLoading(false), 3000);
-  }, [isReady, isLoading, sendAmount, currency, selectedBank, accountNumber, paymentMethod]);
+    try {
+      const transfer = await createTransfer({
+        sendAmount: parsedAmount,
+        sendToken,
+        receiveCurrency: currency,
+        paymentMethod,
+        bank: selectedBank.name,
+        accountNumber,
+      });
+      console.log("Transfer created:", transfer);
+    } catch (err) {
+      console.error("Transfer failed:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [isReady, isLoading, parsedAmount, sendToken, currency, selectedBank, accountNumber, paymentMethod]);
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
