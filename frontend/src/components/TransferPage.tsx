@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowUpDown, Zap, SendHorizonal, Loader2 } from "lucide-react";
 
@@ -9,21 +9,11 @@ import TransferCard, { SendToken } from "@/components/TransferCard";
 import ReceiveCard from "@/components/ReceiveCard";
 import BankSelector, { Bank } from "@/components/BankSelector";
 
-import { createTransfer } from "@/lib/api";
+import { createTransfer, fetchRates, RateQuote } from "@/lib/api";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-/** STX/USD exchange rate — replace with live API later */
-const STX_USD_RATE = 1.23;
-
-/** USD rates per send token — replace with live API later */
-const TOKEN_USD_RATES: Record<SendToken, number> = {
-  STX: 1.23,
-  USDCx: 1.0,
-  BTC: 85000,
-};
-
-/** Minimum receive amount per currency (USD-denominated base) */
+/** Minimum receive amount per currency (fiat-denominated) */
 const MIN_RECEIVE: Record<string, number> = {
   NGN: 1550,
   GHS: 14,
@@ -36,7 +26,6 @@ type Currency = "NGN" | "GHS" | "KES";
 
 function AvailableBalance() {
   const stxBalance = 12450.567;
-  const usdBalance = (stxBalance * STX_USD_RATE).toFixed(2);
 
   return (
     <motion.p
@@ -48,10 +37,6 @@ function AvailableBalance() {
       Available Balance:{" "}
       <span className="text-white font-semibold">
         {stxBalance.toLocaleString("en-US", { minimumFractionDigits: 3 })} STX
-      </span>
-      <span className="text-gray-500 mx-1.5">≈</span>
-      <span className="text-[#f97316] font-medium">
-        ${parseFloat(usdBalance).toLocaleString("en-US", { minimumFractionDigits: 2 })}
       </span>
     </motion.p>
   );
@@ -226,21 +211,34 @@ export default function TransferPage() {
   const [accountNumber, setAccountNumber] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
-  // ── Derived values ───────────────────────────────────────────────────────────
+  // ── Live rate state ───────────────────────────────────────────────────────────
 
   const parsedAmount = parseFloat(sendAmount) || 0;
+  const [rateQuote, setRateQuote] = useState<RateQuote | null>(null);
+  const [ratesLoading, setRatesLoading] = useState(false);
+  const rateDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  /** Token → USD conversion */
-  const usdEquivalent = useMemo(
-    () => parsedAmount * TOKEN_USD_RATES[sendToken],
-    [parsedAmount, sendToken]
-  );
+  useEffect(() => {
+    setRateQuote(null);
+    if (parsedAmount <= 0) { setRatesLoading(false); return; }
+    setRatesLoading(true);
+    if (rateDebounceRef.current) clearTimeout(rateDebounceRef.current);
+    rateDebounceRef.current = setTimeout(async () => {
+      try {
+        const quote = await fetchRates(sendToken, parsedAmount, currency);
+        setRateQuote(quote);
+      } catch { /* logged server-side */ }
+      finally { setRatesLoading(false); }
+    }, 500);
+    return () => { if (rateDebounceRef.current) clearTimeout(rateDebounceRef.current); };
+  }, [parsedAmount, sendToken, currency]);
 
-  /** Receive amount (no fee deduction) */
-  const receiveAmount = usdEquivalent;
-
-  /** Minimum for selected currency */
+  const usdEquivalent = rateQuote?.usdAmount ?? 0;
+  const receiveAmount = rateQuote?.receiveAmount ?? 0;
   const minReceive = useMemo(() => MIN_RECEIVE[currency] ?? 1, [currency]);
+  const rateInfo = rateQuote
+    ? { tokenPrice: rateQuote.tokenPriceUSD, flwRate: rateQuote.flwRate, token: sendToken }
+    : null;
 
   /** Form is valid when all required fields are filled */
   const isReady = useMemo(
@@ -308,6 +306,8 @@ export default function TransferPage() {
                 minimum={minReceive}
                 currency={currency}
                 onCurrencyChange={(c) => setCurrency(c as Currency)}
+                isLoading={ratesLoading}
+                rateInfo={rateInfo}
               />
             </div>
           </div>
