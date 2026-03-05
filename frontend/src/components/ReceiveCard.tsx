@@ -18,6 +18,10 @@ interface ReceiveCardProps {
   currency: Currency;
   /** Notifies parent when currency changes */
   onCurrencyChange: (currency: Currency) => void;
+  /** Shows a loading skeleton while rates are being fetched */
+  isLoading?: boolean;
+  /** Live rate info to display below the amount */
+  rateInfo?: { tokenPrice: number; flwRate: number; token: string } | null;
 }
 
 const CURRENCY_IMAGES: Record<Currency, string> = {
@@ -140,9 +144,11 @@ function CurrencyDropdown({
 
 // ─── Amount Display ───────────────────────────────────────────────────────────
 
-function AmountDisplay({ amount }: { amount: number }) {
+function AmountDisplay({ amount, isLoading }: { amount: number; isLoading?: boolean }) {
+  if (isLoading) {
+    return <div className="h-9 w-36 rounded-lg bg-white/5 animate-pulse" />;
+  }
   const formatted = amount.toFixed(2);
-
   return (
     <motion.p
       key={formatted}
@@ -161,10 +167,30 @@ function AmountDisplay({ amount }: { amount: number }) {
 function MinimumLabel({
   minimum,
   currency,
+  rateInfo,
+  isLoading,
 }: {
   minimum: number;
   currency: Currency;
+  rateInfo?: { tokenPrice: number; flwRate: number; token: string } | null;
+  isLoading?: boolean;
 }) {
+  if (isLoading) {
+    return <div className="h-3.5 w-28 rounded bg-white/5 animate-pulse mt-2" />;
+  }
+  if (rateInfo) {
+    const fmt = (n: number) =>
+      n >= 1000
+        ? n.toLocaleString("en-US", { maximumFractionDigits: 0 })
+        : n.toLocaleString("en-US", { maximumFractionDigits: 4 });
+    return (
+      <p className="text-gray-500 text-xs mt-1.5">
+        1 {rateInfo.token} ≈ ${fmt(rateInfo.tokenPrice)}
+        <span className="mx-1.5 text-gray-600">·</span>
+        1 USD ≈ {fmt(rateInfo.flwRate)} {currency}
+      </p>
+    );
+  }
   return (
     <p className="text-gray-500 text-base mt-1">
       Min:{" "}
@@ -182,6 +208,8 @@ export default function ReceiveCard({
   minimum,
   currency,
   onCurrencyChange,
+  isLoading,
+  rateInfo,
 }: ReceiveCardProps) {
   return (
     <motion.div
@@ -201,8 +229,13 @@ export default function ReceiveCard({
       {/* Amount row */}
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
-          <AmountDisplay amount={amount} />
-          <MinimumLabel minimum={minimum} currency={currency} />
+          <AmountDisplay amount={amount} isLoading={isLoading} />
+          <MinimumLabel
+            minimum={minimum}
+            currency={currency}
+            rateInfo={rateInfo}
+            isLoading={isLoading}
+          />
         </div>
 
         {/* Currency selector */}

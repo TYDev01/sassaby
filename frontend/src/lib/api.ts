@@ -75,6 +75,29 @@ export async function createTransfer(payload: {
   return data.transfer;
 }
 
+// ─── Rate quotes ─────────────────────────────────────────────────────────────
+
+export interface RateQuote {
+  token: string;
+  tokenPriceUSD: number;
+  usdAmount: number;
+  flwRate: number;
+  receiveAmount: number;
+  currency: string;
+}
+
+export async function fetchRates(
+  token: string,
+  amount: number,
+  currency: string
+): Promise<RateQuote> {
+  const params = new URLSearchParams({ token, amount: String(amount), currency });
+  const res = await fetch(`${BASE_URL}/api/rates?${params}`, { cache: "no-store" });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? "Failed to fetch rates");
+  return data as RateQuote;
+}
+
 // ─── Flutterwave helpers ──────────────────────────────────────────────────────
 
 export interface FlwBank {
