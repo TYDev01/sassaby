@@ -74,7 +74,7 @@ function NavTab({
   return (
     <button
       onClick={() => onClick(tabKey)}
-      className="relative px-8 py-2.5 text-sm font-medium transition-colors duration-200 focus:outline-none"
+      className="relative px-8 py-2.5 text-sm font-medium transition-colors duration-200 focus:outline-none cursor-pointer"
     >
       {/* Active border box */}
       {isActive && (
@@ -105,7 +105,7 @@ function IconButton({
       whileHover={{ scale: 1.08 }}
       whileTap={{ scale: 0.95 }}
       aria-label={label}
-      className="w-9 h-9 flex items-center justify-center rounded-full text-gray-400 hover:text-white hover:bg-white/10 transition-colors duration-200 focus:outline-none"
+      className="w-9 h-9 flex items-center justify-center rounded-full text-gray-400 hover:text-white hover:bg-white/10 transition-colors duration-200 focus:outline-none cursor-pointer"
     >
       {children}
     </motion.button>

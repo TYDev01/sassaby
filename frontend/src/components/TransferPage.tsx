@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowUpDown, Zap } from "lucide-react";
+import { ArrowUpDown, Zap, SendHorizonal, Loader2 } from "lucide-react";
 
 import Navbar from "@/components/Navbar";
 import TransferCard, { SendToken } from "@/components/TransferCard";
@@ -76,9 +76,44 @@ function HeroHeading() {
       className="text-center mb-10"
     >
       <h1 className="text-5xl font-bold text-white leading-tight tracking-tight">
-        Bridge between Crypto
+        Bridge between{" "}
+        <span className="relative inline-block text-[#f97316]">
+          Crypto
+          <svg
+            viewBox="0 0 120 10"
+            className="absolute left-0 -bottom-2 w-full"
+            preserveAspectRatio="none"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              d="M2 7 C20 2, 40 9, 60 5 C80 1, 100 8, 118 4"
+              stroke="#f97316"
+              strokeWidth="3"
+              strokeLinecap="round"
+              fill="none"
+            />
+          </svg>
+        </span>
         <br />
-        and local bank accounts
+        and{" "}
+        <span className="relative inline-block text-[#f97316]">
+          local bank
+          <svg
+            viewBox="0 0 200 10"
+            className="absolute left-0 -bottom-2 w-full"
+            preserveAspectRatio="none"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              d="M2 7 C35 2, 70 9, 105 5 C140 1, 170 8, 198 4"
+              stroke="#f97316"
+              strokeWidth="3"
+              strokeLinecap="round"
+              fill="none"
+            />
+          </svg>
+        </span>{" "}
+        accounts
       </h1>
       <AvailableBalance />
     </motion.div>
@@ -103,7 +138,7 @@ function SwapButton({ onClick }: { onClick: () => void }) {
           text-gray-400 hover:text-white
           hover:border-white/30
           transition-colors duration-200
-          focus:outline-none shadow-lg
+          focus:outline-none shadow-lg cursor-pointer
         "
       >
         <ArrowUpDown size={15} />
@@ -136,29 +171,38 @@ function QuickTransferBanner() {
 
 function SubmitButton({
   disabled,
+  loading,
   amount,
   token,
   onClick,
 }: {
   disabled: boolean;
+  loading: boolean;
   amount: string;
   token: SendToken;
   onClick: () => void;
 }) {
-  const label = disabled ? "Enter an amount" : `Bridge ${amount} ${token} →`;
+  const isBlocked = disabled || loading;
+  const label = loading
+    ? "Processing..."
+    : disabled
+    ? "Enter an amount"
+    : `Transfer ${amount} ${token}`;
 
   return (
     <motion.button
-      whileHover={!disabled ? { scale: 1.015 } : {}}
-      whileTap={!disabled ? { scale: 0.985 } : {}}
-      onClick={!disabled ? onClick : undefined}
-      disabled={disabled}
-      aria-disabled={disabled}
+      whileHover={!isBlocked ? { scale: 1.015 } : {}}
+      whileTap={!isBlocked ? { scale: 0.985 } : {}}
+      onClick={!isBlocked ? onClick : undefined}
+      disabled={isBlocked}
+      aria-disabled={isBlocked}
       className={`
         w-full rounded-xl px-4 py-4 text-base font-semibold
         transition-all duration-300 focus:outline-none
         ${
-          disabled
+          loading
+            ? "bg-[#f97316]/70 text-white cursor-not-allowed shadow-lg shadow-[#f97316]/10"
+            : disabled
             ? "bg-[#1a1a1a] text-gray-600 border border-white/[0.05] cursor-not-allowed"
             : "bg-[#f97316] text-white hover:bg-[#ea6c0e] shadow-lg shadow-[#f97316]/20 cursor-pointer"
         }
@@ -171,7 +215,13 @@ function SubmitButton({
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -4 }}
           transition={{ duration: 0.18 }}
+          className="flex items-center justify-center gap-2"
         >
+          {loading ? (
+            <Loader2 size={18} className="shrink-0 animate-spin" />
+          ) : (
+            !disabled && <SendHorizonal size={18} className="shrink-0" />
+          )}
           {label}
         </motion.span>
       </AnimatePresence>
@@ -190,6 +240,7 @@ export default function TransferPage() {
   const [accountNumber, setAccountNumber] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethodId | null>(null);
   const [swapped, setSwapped] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   // ── Derived values ───────────────────────────────────────────────────────────
 
@@ -228,7 +279,8 @@ export default function TransferPage() {
   }, []);
 
   const handleSubmit = useCallback(() => {
-    if (!isReady) return;
+    if (!isReady || isLoading) return;
+    setIsLoading(true);
     // TODO: integrate with Stacks smart contract / backend
     console.log("Initiating bridge transfer", {
       sendAmount,
@@ -237,7 +289,9 @@ export default function TransferPage() {
       accountNumber,
       paymentMethod,
     });
-  }, [isReady, sendAmount, currency, selectedBank, accountNumber, paymentMethod]);
+    // Simulate async — replace with real call
+    setTimeout(() => setIsLoading(false), 3000);
+  }, [isReady, isLoading, sendAmount, currency, selectedBank, accountNumber, paymentMethod]);
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
@@ -313,6 +367,7 @@ export default function TransferPage() {
           {/* Submit */}
           <SubmitButton
             disabled={!isReady}
+            loading={isLoading}
             amount={sendAmount}
             token={sendToken}
             onClick={handleSubmit}

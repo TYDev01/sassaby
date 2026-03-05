@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown } from "lucide-react";
+import Image from "next/image";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -21,21 +22,24 @@ interface TransferCardProps {
   onTokenChange: (token: SendToken) => void;
 }
 
-const TOKEN_COLORS: Record<SendToken, string> = {
-  STX: "#f97316",  // orange
-  USDCx: "#3b82f6", // blue
-  BTC: "#f59e0b",  // amber
+const TOKEN_IMAGES: Record<SendToken, string> = {
+  STX: "/stx.png",
+  USDCx: "/usdcx.png",
+  BTC: "/btc.png",
 };
 
 const TOKENS: SendToken[] = ["STX", "USDCx", "BTC"];
 
-// ─── Token Dot ────────────────────────────────────────────────────────────────
+// ─── Token Icon ────────────────────────────────────────────────────────────────
 
-function TokenDot({ token }: { token: SendToken }) {
+function TokenIcon({ token, size = 20 }: { token: SendToken; size?: number }) {
   return (
-    <span
-      className="w-5 h-5 rounded-full shrink-0 transition-colors duration-300"
-      style={{ backgroundColor: TOKEN_COLORS[token] }}
+    <Image
+      src={TOKEN_IMAGES[token]}
+      alt={token}
+      width={size}
+      height={size}
+      className="rounded-full shrink-0 object-cover"
     />
   );
 }
@@ -72,10 +76,10 @@ function TokenDropdown({
         className="
           flex items-center gap-2 bg-[#1a1a1a] border border-white/10
           rounded-full px-4 py-2 focus:outline-none
-          hover:border-white/20 transition-colors duration-200
+          hover:border-white/20 transition-colors duration-200 cursor-pointer
         "
       >
-        <TokenDot token={selected} />
+        <TokenIcon token={selected} size={20} />
         <span className="text-white text-base font-semibold tracking-wide">
           {selected}
         </span>
@@ -113,7 +117,7 @@ function TokenDropdown({
                   }}
                   className={`
                     w-full flex items-center gap-2 px-4 py-2.5 text-sm
-                    transition-colors duration-150
+                    transition-colors duration-150 cursor-pointer
                     ${
                       t === selected
                         ? "text-white bg-white/5"
@@ -121,7 +125,7 @@ function TokenDropdown({
                     }
                   `}
                 >
-                  <TokenDot token={t} />
+                  <TokenIcon token={t} size={18} />
                   {t}
                 </button>
               </li>

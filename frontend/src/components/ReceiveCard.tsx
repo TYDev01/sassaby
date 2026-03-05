@@ -3,6 +3,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
+import Image from "next/image";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -19,21 +20,24 @@ interface ReceiveCardProps {
   onCurrencyChange: (currency: Currency) => void;
 }
 
-const CURRENCY_COLORS: Record<Currency, string> = {
-  NGN: "#22c55e", // green
-  GHS: "#f59e0b", // amber
-  KES: "#8b5cf6", // violet
+const CURRENCY_IMAGES: Record<Currency, string> = {
+  NGN: "/ngn.png",
+  GHS: "/ghs.png",
+  KES: "/kes.png",
 };
 
 const CURRENCIES: Currency[] = ["NGN", "GHS", "KES"];
 
-// ─── Currency Dot ─────────────────────────────────────────────────────────────
+// ─── Currency Icon ────────────────────────────────────────────────────────────
 
-function CurrencyDot({ currency }: { currency: Currency }) {
+function CurrencyIcon({ currency, size = 20 }: { currency: Currency; size?: number }) {
   return (
-    <span
-      className="w-5 h-5 rounded-full shrink-0 transition-colors duration-300"
-      style={{ backgroundColor: CURRENCY_COLORS[currency] }}
+    <Image
+      src={CURRENCY_IMAGES[currency]}
+      alt={currency}
+      width={size}
+      height={size}
+      className="rounded-full shrink-0 object-cover"
     />
   );
 }
@@ -72,10 +76,10 @@ function CurrencyDropdown({
         className="
           flex items-center gap-2 bg-[#1a1a1a] border border-white/10
           rounded-full px-4 py-2 focus:outline-none
-          hover:border-white/20 transition-colors duration-200
+          hover:border-white/20 transition-colors duration-200 cursor-pointer
         "
       >
-        <CurrencyDot currency={selected} />
+        <CurrencyIcon currency={selected} size={20} />
         <span className="text-white text-base font-semibold tracking-wide">
           {selected}
         </span>
@@ -114,7 +118,7 @@ function CurrencyDropdown({
                   }}
                   className={`
                     w-full flex items-center gap-2 px-4 py-2.5 text-sm
-                    transition-colors duration-150
+                    transition-colors duration-150 cursor-pointer
                     ${
                       c === selected
                         ? "text-white bg-white/5"
@@ -122,7 +126,7 @@ function CurrencyDropdown({
                     }
                   `}
                 >
-                  <CurrencyDot currency={c} />
+                  <CurrencyIcon currency={c} size={18} />
                   {c}
                 </button>
               </li>

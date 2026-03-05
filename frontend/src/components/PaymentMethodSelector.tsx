@@ -72,7 +72,7 @@ function MethodOption({
       onClick={onClick}
       className={`
         w-full flex items-center gap-3 px-4 py-3 text-left
-        transition-colors duration-150 rounded-lg
+        transition-colors duration-150 rounded-lg cursor-pointer
         ${isSelected ? "bg-white/5" : ""}
       `}
     >
@@ -157,7 +157,7 @@ export default function PaymentMethodSelector({
           bg-[#111111] border border-white/[0.08]
           rounded-xl px-4 py-3 text-sm
           hover:border-white/20 transition-colors duration-200
-          focus:outline-none
+          focus:outline-none cursor-pointer
         "
       >
         {/* Left side */}
