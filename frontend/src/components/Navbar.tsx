@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { motion } from "framer-motion";
 import { User, Bell, LayoutDashboard } from "lucide-react";
 import Link from "next/link";
@@ -8,7 +7,12 @@ import { usePathname } from "next/navigation";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type NavTab = "transfer" | "history" | "docs";
+type NavTab = "transfer" | "history";
+
+const TAB_ROUTES: Record<NavTab, string> = {
+  transfer: "/",
+  history: "/history",
+};
 
 // ─── Logo ─────────────────────────────────────────────────────────────────────
 
@@ -63,21 +67,22 @@ function NavTab({
   label,
   tabKey,
   activeTab,
-  onClick,
 }: {
   label: string;
   tabKey: NavTab;
   activeTab: NavTab;
-  onClick: (tab: NavTab) => void;
 }) {
   const isActive = activeTab === tabKey;
+  const href = TAB_ROUTES[tabKey];
+  const isExternal = href.startsWith("http");
 
   return (
-    <button
-      onClick={() => onClick(tabKey)}
+    <Link
+      href={href}
+      target={isExternal ? "_blank" : undefined}
+      rel={isExternal ? "noopener noreferrer" : undefined}
       className="relative px-8 py-2.5 text-sm font-medium transition-colors duration-200 focus:outline-none cursor-pointer"
     >
-      {/* Active border box */}
       {isActive && (
         <motion.div
           layoutId="nav-active-border"
@@ -88,7 +93,7 @@ function NavTab({
       <span className={isActive ? "text-white" : "text-gray-400 hover:text-gray-200"}>
         {label}
       </span>
-    </button>
+    </Link>
   );
 }
 
@@ -116,14 +121,15 @@ function IconButton({
 // ─── Navbar ───────────────────────────────────────────────────────────────────
 
 export default function Navbar() {
-  const [activeTab, setActiveTab] = useState<NavTab>("transfer");
   const pathname = usePathname();
   const isAdmin = pathname === "/admin";
+
+  const activeTab: NavTab =
+    pathname === "/history" ? "history" : "transfer";
 
   const tabs: { label: string; key: NavTab }[] = [
     { label: "Transfer", key: "transfer" },
     { label: "History", key: "history" },
-    { label: "Docs", key: "docs" },
   ];
 
   return (
@@ -155,7 +161,6 @@ export default function Navbar() {
               label={label}
               tabKey={key}
               activeTab={activeTab}
-              onClick={setActiveTab}
             />
           ))}
         </nav>
