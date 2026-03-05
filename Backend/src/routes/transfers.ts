@@ -29,7 +29,7 @@ const FEE_RATES: Record<PaymentMethod, number> = {
 };
 
 // ─── POST /api/transfers — create a new transfer ─────────────────────────────
-router.post("/", (req: Request, res: Response) => {
+router.post("/", async (req: Request, res: Response) => {
   const {
     sendAmount,
     sendToken,
@@ -83,7 +83,7 @@ router.post("/", (req: Request, res: Response) => {
     status: "pending",
   };
 
-  addTransfer(transfer);
+  await addTransfer(transfer);
 
   // Fire Flutterwave transfer in the background (don't block the response)
   setImmediate(async () => {
@@ -109,26 +109,26 @@ router.post("/", (req: Request, res: Response) => {
 });
 
 // ─── GET /api/transfers — list all transfers ──────────────────────────────────
-router.get("/", (_req: Request, res: Response) => {
-  return res.json({ transfers: getAllTransfers() });
+router.get("/", async (_req: Request, res: Response) => {
+  return res.json({ transfers: await getAllTransfers() });
 });
 
 // ─── GET /api/transfers/:id — single transfer ─────────────────────────────────
-router.get("/:id", (req: Request, res: Response) => {
-  const transfer = getTransferById(req.params.id);
+router.get("/:id", async (req: Request, res: Response) => {
+  const transfer = await getTransferById(req.params.id);
   if (!transfer) return res.status(404).json({ error: "Transfer not found." });
   return res.json({ transfer });
 });
 
 // ─── PATCH /api/transfers/:id/status — manual status override ────────────────
-router.patch("/:id/status", (req: Request, res: Response) => {
+router.patch("/:id/status", async (req: Request, res: Response) => {
   const { status } = req.body as { status: string };
   const valid = ["pending", "processing", "completed", "failed"];
   if (!valid.includes(status)) {
     return res.status(400).json({ error: "Invalid status value." });
   }
 
-  const updated = updateTransferStatus(
+  const updated = await updateTransferStatus(
     req.params.id,
     status as Transfer["status"],
     status === "completed" ? new Date().toISOString() : undefined

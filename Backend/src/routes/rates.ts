@@ -1,5 +1,6 @@
 import { Router, Request, Response as ExpressResponse } from "express";
 import axios from "axios";
+import { prisma } from "../lib/prisma";
 
 const router = Router();
 
@@ -67,45 +68,95 @@ async function getAccessToken(): Promise<string> {
 
 const FALLBACK_RATES: Record<string, number> = { NGN: 1580, GHS: 13.5, KES: 130 };
 
-// ─── Admin rate config (in-memory, persists while server runs) ───────────────
+const SUPPORTED_CURRENCIES = ["NGN", "GHS", "KES"] as const;
+
+// ─── Admin rate config (PostgreSQL-backed) ─────────────────────────────────────────
 
 export type RateMode = "api" | "manual";
 
 export interface RateConfig {
-  /** Per-currency mode. Defaults to "api" for any currency not listed. */
   modes: Record<string, RateMode>;
-  /** Admin-set manual rates (USD → fiat). Only used when mode is "manual". */
   manualRates: Record<string, number>;
 }
 
-const rateConfig: RateConfig = {
-  modes: { NGN: "api", GHS: "api", KES: "api" },
-  manualRates: { NGN: 1580, GHS: 13.5, KES: 130 },
-};
+/** Load all RateConfig rows from DB, seeding defaults if the table is empty. */
+async function loadRateConfig(): Promise<RateConfig> {
+  // Seed default rows if missing
+  for (const currency of SUPPORTED_CURRENCIES) {
+    await prisma.rateConfig.upsert({
+      where: { currency },
+      create: { currency, mode: "api", manualRate: FALLBACK_RATES[currency] },
+      update: {},
+    });
+  }
+
+  const rows = await prisma.rateConfig.findMany();
+  const modes: Record<string, RateMode> = {};
+  const manualRates: Record<string, number> = {};
+  for (const row of rows) {
+    modes[row.currency] = row.mode as RateMode;
+    manualRates[row.currency] = Number(row.manualRate);
+  }
+  return { modes, manualRates };
+}
 
 // GET /api/rates/config
-router.get("/config", (_req, res: ExpressResponse) => {
-  return res.json(rateConfig);
+router.get("/config", async (_req, res: ExpressResponse) => {
+  try {
+    return res.json(await loadRateConfig());
+  } catch (err) {
+    console.error("[RATES] config load failed:", err);
+    return res.status(500).json({ error: "Failed to load rate config." });
+  }
 });
 
 // POST /api/rates/config
-router.post("/config", (req, res: ExpressResponse) => {
+router.post("/config", async (req, res: ExpressResponse) => {
   const { modes, manualRates } = req.body as Partial<RateConfig>;
+
+  const updates: Promise<unknown>[] = [];
+
   if (modes) {
-    for (const [cur, mode] of Object.entries(modes)) {
-      if (mode === "api" || mode === "manual") rateConfig.modes[cur] = mode;
+    for (const [currency, mode] of Object.entries(modes)) {
+      if (mode === "api" || mode === "manual") {
+        updates.push(
+          prisma.rateConfig.upsert({
+            where: { currency },
+            create: { currency, mode, manualRate: FALLBACK_RATES[currency] ?? 0 },
+            update: { mode },
+          })
+        );
+      }
     }
   }
+
   if (manualRates) {
-    for (const [cur, rate] of Object.entries(manualRates)) {
+    for (const [currency, rate] of Object.entries(manualRates)) {
       const n = Number(rate);
-      if (n > 0) rateConfig.manualRates[cur] = n;
+      if (n > 0) {
+        updates.push(
+          prisma.rateConfig.upsert({
+            where: { currency },
+            create: { currency, mode: "manual", manualRate: n },
+            update: { manualRate: n, mode: "manual" },
+          })
+        );
+      }
     }
   }
-  // Bust the FLW rate cache for updated currencies so the new config takes effect
-  const changed = Object.keys({ ...modes, ...manualRates });
-  for (const cur of changed) delete flwRateCache[`USD→${cur}`];
-  return res.json(rateConfig);
+
+  try {
+    await Promise.all(updates);
+
+    // Bust FLW rate cache for changed currencies
+    const changed = Object.keys({ ...modes, ...manualRates });
+    for (const cur of changed) delete flwRateCache[`USD→${cur}`];
+
+    return res.json(await loadRateConfig());
+  } catch (err) {
+    console.error("[RATES] config update failed:", err);
+    return res.status(500).json({ error: "Failed to update rate config." });
+  }
 });
 
 // ─── Flutterwave rate cache (5-min TTL) ──────────────────────────────────────
@@ -114,10 +165,14 @@ interface FlwRateEntry { rate: number; expiresAt: number; isFallback: boolean; }
 const flwRateCache: Record<string, FlwRateEntry> = {};
 
 async function getFlwRate(destCurrency: string): Promise<{ rate: number; isFallback: boolean }> {
-  // ── Admin manual override ──────────────────────────────────────────────────
-  if ((rateConfig.modes[destCurrency] ?? "api") === "manual") {
-    const manual = rateConfig.manualRates[destCurrency];
-    if (manual && manual > 0) return { rate: manual, isFallback: false };
+  // ── Check admin config in DB ──────────────────────────────────────────────────
+  try {
+    const row = await prisma.rateConfig.findUnique({ where: { currency: destCurrency } });
+    if (row && row.mode === "manual" && Number(row.manualRate) > 0) {
+      return { rate: Number(row.manualRate), isFallback: false };
+    }
+  } catch {
+    // DB unavailable — fall through to live rate
   }
 
   const cacheKey = `USD→${destCurrency}`;
@@ -180,7 +235,10 @@ router.get("/", async (req: Request, res: ExpressResponse) => {
     const usdAmount = parsedAmount * tokenPriceUSD;
     const receiveAmount = usdAmount * flwRate;
 
-    const mode = rateConfig.modes[currency] ?? "api";
+    // Read mode from DB to annotate the response
+    const configRow = await prisma.rateConfig.findUnique({ where: { currency } }).catch(() => null);
+    const mode: RateMode = (configRow?.mode as RateMode) ?? "api";
+
     return res.json({
       token, tokenPriceUSD, usdAmount, flwRate, receiveAmount, currency,
       rateSource: mode === "manual" ? "manual" : isFallback ? "fallback" : "flutterwave",

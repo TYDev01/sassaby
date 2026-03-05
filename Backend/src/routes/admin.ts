@@ -4,8 +4,8 @@ import { getAdminStats } from "../store";
 const router = Router();
 
 // ─── GET /api/admin/stats ─────────────────────────────────────────────────────
-router.get("/stats", (_req: Request, res: Response) => {
-  return res.json(getAdminStats());
+router.get("/stats", async (_req: Request, res: Response) => {
+  return res.json(await getAdminStats());
 });
 
 export default router;

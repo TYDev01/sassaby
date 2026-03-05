@@ -1,0 +1,37 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Transfers ────────────────────────────────────────────────────────────────
+
+model Transfer {
+  id              String    @id
+  createdAt       DateTime  @default(now())
+  sendAmount      Float
+  sendToken       String
+  usdEquivalent   Float
+  receiveAmount   Float
+  receiveCurrency String
+  fee             Float
+  feeRate         Float
+  paymentMethod   String
+  bank            String
+  bankCode        String
+  accountNumber   String
+  status          String    @default("pending")
+  completedAt     DateTime?
+}
+
+// ─── Rate config (admin-managed USD → fiat rates) ────────────────────────────
+
+model RateConfig {
+  id         Int    @id @default(autoincrement())
+  currency   String @unique
+  mode       String @default("api")   // "api" | "manual"
+  manualRate Float  @default(0)
+}
