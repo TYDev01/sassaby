@@ -11,15 +11,9 @@ import {
   PaymentMethod,
 } from "../store";
 import { callFlwTransfer } from "./flutterwave";
+import { getTokenPriceUSD } from "./rates";
 
 const router = Router();
-
-// ─── Token → USD rates (mock; swap with live oracle later) ───────────────────
-const TOKEN_USD_RATES: Record<SendToken, number> = {
-  STX: 1.23,
-  USDCx: 1.0,
-  BTC: 85000,
-};
 
 // ─── Fee rates per payment method ─────────────────────────────────────────────
 const FEE_RATES: Record<PaymentMethod, number> = {
@@ -61,7 +55,15 @@ router.post("/", async (req: Request, res: Response) => {
     return res.status(400).json({ error: "Missing required fields." });
   }
 
-  const usdEquivalent = sendAmount * (TOKEN_USD_RATES[sendToken] ?? 0);
+  let usdEquivalent: number;
+  try {
+    const tokenPrice = await getTokenPriceUSD(sendToken);
+    usdEquivalent = sendAmount * tokenPrice;
+  } catch (err) {
+    console.error("[TRANSFERS] Failed to fetch token price:", err);
+    return res.status(502).json({ error: "Could not fetch live token price. Please try again." });
+  }
+
   const feeRate = FEE_RATES[paymentMethod] ?? 0;
   const fee = usdEquivalent * feeRate;
   const receiveAmount = usdEquivalent - fee;
@@ -139,3 +141,4 @@ router.patch("/:id/status", async (req: Request, res: Response) => {
 });
 
 export default router;
+

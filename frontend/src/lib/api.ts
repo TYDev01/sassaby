@@ -84,7 +84,7 @@ export interface RateQuote {
   flwRate: number;
   receiveAmount: number;
   currency: string;
-  rateSource?: "flutterwave" | "fallback" | "manual";
+  rateSource?: "flutterwave" | "manual";
   rateMode?: "api" | "manual";
 }
 

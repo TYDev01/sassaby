@@ -11,15 +11,6 @@ import BankSelector, { Bank } from "@/components/BankSelector";
 
 import { createTransfer, fetchRates, RateQuote } from "@/lib/api";
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-
-/** Minimum receive amount per currency (fiat-denominated) */
-const MIN_RECEIVE: Record<string, number> = {
-  NGN: 1550,
-  GHS: 14,
-  KES: 132,
-};
-
 type Currency = "NGN" | "GHS" | "KES";
 
 // ─── Available Balance ─────────────────────────────────────────────────────────
@@ -216,6 +207,7 @@ export default function TransferPage() {
   const parsedAmount = parseFloat(sendAmount) || 0;
   const [rateQuote, setRateQuote] = useState<RateQuote | null>(null);
   const [ratesLoading, setRatesLoading] = useState(false);
+  const [baseFlwRate, setBaseFlwRate] = useState<number | null>(null);
   const rateDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -233,9 +225,19 @@ export default function TransferPage() {
     return () => { if (rateDebounceRef.current) clearTimeout(rateDebounceRef.current); };
   }, [parsedAmount, sendToken, currency]);
 
+  // Fetch base FLW rate on mount and whenever token/currency changes (drives minimum display)
+  useEffect(() => {
+    setBaseFlwRate(null);
+    let cancelled = false;
+    fetchRates(sendToken, 1, currency)
+      .then((quote) => { if (!cancelled) setBaseFlwRate(quote.flwRate); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [sendToken, currency]);
+
   const usdEquivalent = rateQuote?.usdAmount ?? 0;
   const receiveAmount = rateQuote?.receiveAmount ?? 0;
-  const minReceive = useMemo(() => MIN_RECEIVE[currency] ?? 1, [currency]);
+  const minReceive = baseFlwRate;
   const rateInfo = rateQuote
     ? { tokenPrice: rateQuote.tokenPriceUSD, flwRate: rateQuote.flwRate, token: sendToken }
     : null;

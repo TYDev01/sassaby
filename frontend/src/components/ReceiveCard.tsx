@@ -12,8 +12,8 @@ type Currency = "NGN" | "GHS" | "KES";
 interface ReceiveCardProps {
   /** Calculated receive amount (controlled by parent) */
   amount: number;
-  /** Minimum receivable amount */
-  minimum: number;
+  /** Minimum receivable amount — null while the live rate is loading */
+  minimum: number | null;
   /** Selected currency */
   currency: Currency;
   /** Notifies parent when currency changes */
@@ -173,7 +173,7 @@ function MinimumLabel({
   rateInfo,
   isLoading,
 }: {
-  minimum: number;
+  minimum: number | null;
   currency: Currency;
   rateInfo?: { tokenPrice: number; flwRate: number; token: string } | null;
   isLoading?: boolean;
@@ -194,11 +194,14 @@ function MinimumLabel({
       </p>
     );
   }
+  if (minimum === null) {
+    return <div className="h-3.5 w-28 rounded bg-white/5 animate-pulse mt-2" />;
+  }
   return (
     <p className="text-gray-500 text-base mt-1">
       Min:{" "}
       <span className="text-gray-400">
-        {minimum.toFixed(2)} {currency}
+        {minimum.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {currency}
       </span>
     </p>
   );

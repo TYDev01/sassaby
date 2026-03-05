@@ -20,7 +20,7 @@ const COINGECKO_IDS: Record<string, string> = {
 interface PriceEntry { priceUsd: number; expiresAt: number; }
 const priceCache: Record<string, PriceEntry> = {};
 
-async function getTokenPriceUSD(token: string): Promise<number> {
+export async function getTokenPriceUSD(token: string): Promise<number> {
   if (token === "USDCx") return 1.0;
   const geckoId = COINGECKO_IDS[token];
   if (!geckoId) throw new Error(`Unsupported token: ${token}`);
@@ -64,9 +64,7 @@ async function getAccessToken(): Promise<string> {
   return cachedToken;
 }
 
-// ─── Approximate fallback rates (USD → fiat) ─────────────────────────────────
-
-const FALLBACK_RATES: Record<string, number> = { NGN: 1580, GHS: 13.5, KES: 130 };
+// ─── Supported currencies ────────────────────────────────────────────────────
 
 const SUPPORTED_CURRENCIES = ["NGN", "GHS", "KES"] as const;
 
@@ -81,11 +79,11 @@ export interface RateConfig {
 
 /** Load all RateConfig rows from DB, seeding defaults if the table is empty. */
 async function loadRateConfig(): Promise<RateConfig> {
-  // Seed default rows if missing
+  // Seed default rows if missing (mode: api, manualRate: 0 until admin sets it)
   for (const currency of SUPPORTED_CURRENCIES) {
     await prisma.rateConfig.upsert({
       where: { currency },
-      create: { currency, mode: "api", manualRate: FALLBACK_RATES[currency] },
+      create: { currency, mode: "api", manualRate: 0 },
       update: {},
     });
   }
@@ -122,7 +120,7 @@ router.post("/config", async (req, res: ExpressResponse) => {
         updates.push(
           prisma.rateConfig.upsert({
             where: { currency },
-            create: { currency, mode, manualRate: FALLBACK_RATES[currency] ?? 0 },
+            create: { currency, mode, manualRate: 0 },
             update: { mode },
           })
         );
@@ -161,15 +159,15 @@ router.post("/config", async (req, res: ExpressResponse) => {
 
 // ─── Flutterwave rate cache (5-min TTL) ──────────────────────────────────────
 
-interface FlwRateEntry { rate: number; expiresAt: number; isFallback: boolean; }
+interface FlwRateEntry { rate: number; expiresAt: number; }
 const flwRateCache: Record<string, FlwRateEntry> = {};
 
-async function getFlwRate(destCurrency: string): Promise<{ rate: number; isFallback: boolean }> {
-  // ── Check admin config in DB ──────────────────────────────────────────────────
+async function getFlwRate(destCurrency: string): Promise<{ rate: number }> {
+  // ── Check admin config in DB ──────────────────────────────────────────────
   try {
     const row = await prisma.rateConfig.findUnique({ where: { currency: destCurrency } });
     if (row && row.mode === "manual" && Number(row.manualRate) > 0) {
-      return { rate: Number(row.manualRate), isFallback: false };
+      return { rate: Number(row.manualRate) };
     }
   } catch {
     // DB unavailable — fall through to live rate
@@ -177,7 +175,7 @@ async function getFlwRate(destCurrency: string): Promise<{ rate: number; isFallb
 
   const cacheKey = `USD→${destCurrency}`;
   const cached = flwRateCache[cacheKey];
-  if (cached && Date.now() < cached.expiresAt) return { rate: cached.rate, isFallback: cached.isFallback };
+  if (cached && Date.now() < cached.expiresAt) return { rate: cached.rate };
 
   try {
     const token = await getAccessToken();
@@ -188,17 +186,17 @@ async function getFlwRate(destCurrency: string): Promise<{ rate: number; isFallb
     );
     const rate = parseFloat(json.data?.rate ?? "0");
     if (rate > 0) {
-      flwRateCache[cacheKey] = { rate, expiresAt: Date.now() + 5 * 60_000, isFallback: false };
-      return { rate, isFallback: false };
+      flwRateCache[cacheKey] = { rate, expiresAt: Date.now() + 5 * 60_000 };
+      return { rate };
     }
   } catch (err) {
-    console.warn(`[RATES] FLW rate failed for ${destCurrency}, using fallback:`, err);
+    console.warn(`[RATES] FLW rate fetch failed for ${destCurrency}:`, (err as Error).message);
   }
 
-  const fallback = FALLBACK_RATES[destCurrency];
-  if (!fallback) throw new Error(`No rate available for ${destCurrency}`);
-  flwRateCache[cacheKey] = { rate: fallback, expiresAt: Date.now() + 5 * 60_000, isFallback: true };
-  return { rate: fallback, isFallback: true };
+  throw new Error(
+    `No rate available for ${destCurrency}. ` +
+    `Set a manual rate in the admin dashboard or ensure Flutterwave API is reachable.`
+  );
 }
 
 // ─── GET /api/rates?token=STX&amount=10&currency=NGN ─────────────────────────
@@ -210,7 +208,7 @@ export interface RateQuoteResponse {
   flwRate: number;
   receiveAmount: number;
   currency: string;
-  rateSource: "flutterwave" | "fallback" | "manual";
+  rateSource: "flutterwave" | "manual";
   rateMode: RateMode;
 }
 
@@ -227,7 +225,7 @@ router.get("/", async (req: Request, res: ExpressResponse) => {
     return res.status(400).json({ error: "amount must be a positive number." });
 
   try {
-    const [tokenPriceUSD, { rate: flwRate, isFallback }] = await Promise.all([
+    const [tokenPriceUSD, { rate: flwRate }] = await Promise.all([
       getTokenPriceUSD(token),
       getFlwRate(currency),
     ]);
@@ -241,7 +239,7 @@ router.get("/", async (req: Request, res: ExpressResponse) => {
 
     return res.json({
       token, tokenPriceUSD, usdAmount, flwRate, receiveAmount, currency,
-      rateSource: mode === "manual" ? "manual" : isFallback ? "fallback" : "flutterwave",
+      rateSource: mode === "manual" ? "manual" : "flutterwave",
       rateMode: mode,
     } satisfies RateQuoteResponse);
   } catch (err) {
