@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   DollarSign,
@@ -13,6 +13,9 @@ import {
   Layers,
   RefreshCw,
   ArrowUpRight,
+  ShieldAlert,
+  Wallet,
+  Loader2,
 } from "lucide-react";
 import {
   BarChart,
@@ -26,8 +29,10 @@ import {
   Cell,
   Legend,
 } from "recharts";
+import { toast } from "sonner";
 import Navbar from "@/components/Navbar";
 import { fetchAdminStats, AdminStats, Transfer } from "@/lib/api";
+import { useWallet } from "@/lib/wallet";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -335,6 +340,80 @@ function CurrencyDistributionChart({ data }: { data: AdminStats["volumeByCurrenc
   );
 }
 
+// ─── Admin address ────────────────────────────────────────────────────────────
+
+const ADMIN_ADDRESS = process.env.NEXT_PUBLIC_ADMIN_ADDRESS;
+
+// ─── Auth Gate — not connected ────────────────────────────────────────────────
+
+function ConnectGate() {
+  const { connectWallet, connecting } = useWallet();
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 24 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, ease: "easeOut" }}
+      className="flex flex-col items-center justify-center flex-1 py-32 px-6 text-center"
+    >
+      <motion.div
+        animate={{ y: [0, -8, 0] }}
+        transition={{ duration: 2.8, repeat: Infinity, ease: "easeInOut" }}
+        className="w-20 h-20 rounded-2xl mb-8 bg-[#f97316]/10 border border-[#f97316]/20 flex items-center justify-center"
+      >
+        <ShieldAlert size={36} className="text-[#f97316]" />
+      </motion.div>
+      <h2 className="text-white text-2xl font-bold tracking-tight mb-3">
+        Admin access required
+      </h2>
+      <p className="text-gray-400 text-sm max-w-xs mb-8 leading-relaxed">
+        Connect your authorised Stacks wallet to access the admin dashboard.
+      </p>
+      <motion.button
+        whileHover={{ scale: 1.04 }}
+        whileTap={{ scale: 0.97 }}
+        onClick={connectWallet}
+        disabled={connecting}
+        className="flex items-center gap-2.5 px-8 py-3.5 rounded-xl bg-[#f97316] hover:bg-[#ea6c0e] text-white font-semibold text-sm shadow-lg shadow-[#f97316]/20 transition-all duration-200 cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed"
+      >
+        {connecting ? (
+          <Loader2 size={18} className="animate-spin shrink-0" />
+        ) : (
+          <Wallet size={18} className="shrink-0" />
+        )}
+        {connecting ? "Connecting…" : "Connect Wallet"}
+      </motion.button>
+    </motion.div>
+  );
+}
+
+// ─── Auth Gate — wrong address ────────────────────────────────────────────────
+
+function UnauthorisedGate() {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 24 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, ease: "easeOut" }}
+      className="flex flex-col items-center justify-center flex-1 py-32 px-6 text-center"
+    >
+      <motion.div
+        animate={{ rotate: [0, -6, 6, -4, 4, 0] }}
+        transition={{ duration: 0.6, delay: 0.3 }}
+        className="w-20 h-20 rounded-2xl mb-8 bg-red-500/10 border border-red-500/20 flex items-center justify-center"
+      >
+        <ShieldAlert size={36} className="text-red-400" />
+      </motion.div>
+      <h2 className="text-white text-2xl font-bold tracking-tight mb-3">
+        Unauthorised
+      </h2>
+      <p className="text-gray-400 text-sm max-w-sm leading-relaxed">
+        The connected wallet address does not have admin privileges. Please
+        connect with the authorised admin wallet.
+      </p>
+    </motion.div>
+  );
+}
+
 // ─── Skeleton ─────────────────────────────────────────────────────────────────
 
 function Skeleton({ className }: { className?: string }) {
@@ -364,11 +443,29 @@ function DashboardSkeleton() {
 // ─── Admin Dashboard ──────────────────────────────────────────────────────────
 
 export default function AdminDashboard() {
+  const { connected, addresses } = useWallet();
   const [stats, setStats] = useState<AdminStats | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+
+  // Derive auth state
+  const isAuthorised = connected && addresses?.stx === ADMIN_ADDRESS;
+  const isWrongAddress = connected && addresses?.stx !== ADMIN_ADDRESS;
+
+  // Fire Sonner error toast when wrong address connects
+  const toastedRef = useRef(false);
+  useEffect(() => {
+    if (isWrongAddress && !toastedRef.current) {
+      toastedRef.current = true;
+      toast.error("Unauthorised wallet", {
+        description: `Address ${addresses?.stx?.slice(0, 8)}…${addresses?.stx?.slice(-4)} does not have admin access.`,
+        duration: 6000,
+      });
+    }
+    if (!isWrongAddress) toastedRef.current = false;
+  }, [isWrongAddress, addresses?.stx]);
 
   const load = useCallback(async (isRefresh = false) => {
     try {
@@ -387,10 +484,34 @@ export default function AdminDashboard() {
   }, []);
 
   useEffect(() => {
+    if (!isAuthorised) return;
     load();
     const interval = setInterval(() => load(true), 15000);
     return () => clearInterval(interval);
-  }, [load]);
+  }, [load, isAuthorised]);
+
+  // ── Auth gates ────────────────────────────────────────────────────────────
+  if (!connected) {
+    return (
+      <div className="min-h-screen bg-[#0a0a0a] flex flex-col">
+        <Navbar />
+        <main className="flex-1 flex flex-col items-center justify-center">
+          <ConnectGate />
+        </main>
+      </div>
+    );
+  }
+
+  if (isWrongAddress) {
+    return (
+      <div className="min-h-screen bg-[#0a0a0a] flex flex-col">
+        <Navbar />
+        <main className="flex-1 flex flex-col items-center justify-center">
+          <UnauthorisedGate />
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] flex flex-col">

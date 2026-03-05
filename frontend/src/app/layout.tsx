@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import MouseGlow from "@/components/MouseGlow";
 import { WalletProvider } from "@/lib/wallet";
+import { Toaster } from "@/components/ui/sonner";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -31,6 +32,7 @@ export default function RootLayout({
       >
         <MouseGlow />
         <WalletProvider>{children}</WalletProvider>
+        <Toaster position="top-right" richColors theme="dark" />
       </body>
     </html>
   );
