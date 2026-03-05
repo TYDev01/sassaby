@@ -120,29 +120,23 @@ function HeroHeading() {
   );
 }
 
-// ─── Swap Direction Button ─────────────────────────────────────────────────────
+// ─── Arrow Divider ────────────────────────────────────────────────────────────
 
-function SwapButton({ onClick }: { onClick: () => void }) {
+function ArrowDivider() {
   return (
-    <div className="flex justify-center my-[-2px] relative z-10">
-      <motion.button
-        whileHover={{ scale: 1.1, rotate: 180 }}
-        whileTap={{ scale: 0.92 }}
-        transition={{ type: "spring", stiffness: 400, damping: 20 }}
-        onClick={onClick}
-        aria-label="Swap transfer direction"
+    <div className="flex justify-center py-4 relative z-10">
+      <motion.div
+        animate={{ y: [0, 6, 0] }}
+        transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
         className="
           w-11 h-11 rounded-full
           bg-[#1a1a1a] border border-white/15
           flex items-center justify-center
-          text-gray-400 hover:text-white
-          hover:border-white/30
-          transition-colors duration-200
-          focus:outline-none shadow-lg cursor-pointer
+          text-[#f97316] shadow-lg
         "
       >
-        <ArrowUpDown size={15} />
-      </motion.button>
+        <ArrowUpDown size={16} />
+      </motion.div>
     </div>
   );
 }
@@ -203,7 +197,7 @@ function SubmitButton({
           loading
             ? "bg-[#f97316]/70 text-white cursor-not-allowed shadow-lg shadow-[#f97316]/10"
             : disabled
-            ? "bg-[#1a1a1a] text-gray-600 border border-white/[0.05] cursor-not-allowed"
+            ? "bg-[#1a1a1a] text-gray-600 border border-[#f97316]/20 cursor-not-allowed"
             : "bg-[#f97316] text-white hover:bg-[#ea6c0e] shadow-lg shadow-[#f97316]/20 cursor-pointer"
         }
       `}
@@ -239,7 +233,6 @@ export default function TransferPage() {
   const [selectedBank, setSelectedBank] = useState<Bank | null>(null);
   const [accountNumber, setAccountNumber] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethodId | null>(null);
-  const [swapped, setSwapped] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
   // ── Derived values ───────────────────────────────────────────────────────────
@@ -274,10 +267,6 @@ export default function TransferPage() {
 
   // ── Handlers ─────────────────────────────────────────────────────────────────
 
-  const handleSwap = useCallback(() => {
-    setSwapped((prev) => !prev);
-  }, []);
-
   const handleSubmit = useCallback(() => {
     if (!isReady || isLoading) return;
     setIsLoading(true);
@@ -307,12 +296,9 @@ export default function TransferPage() {
 
         {/* Card stack */}
         <div className="w-full max-w-[600px] flex flex-col gap-0">
-          {/* Send / Receive cards with swap */}
-          <div className="flex flex-col gap-0">
-            <motion.div
-              animate={{ order: swapped ? 2 : 0 }}
-              className="relative z-20"
-            >
+          {/* Send / Receive cards */}
+          <div className="flex flex-col">
+            <div className="relative z-20">
               <TransferCard
                 value={sendAmount}
                 onChange={setSendAmount}
@@ -320,21 +306,18 @@ export default function TransferPage() {
                 token={sendToken}
                 onTokenChange={setSendToken}
               />
-            </motion.div>
+            </div>
 
-            <SwapButton onClick={handleSwap} />
+            <ArrowDivider />
 
-            <motion.div
-              animate={{ order: swapped ? 0 : 2 }}
-              className="relative z-10"
-            >
+            <div className="relative z-10">
               <ReceiveCard
                 amount={receiveAmount}
                 minimum={minReceive}
                 currency={currency}
                 onCurrencyChange={(c) => setCurrency(c as Currency)}
               />
-            </motion.div>
+            </div>
           </div>
 
           {/* Spacer */}
