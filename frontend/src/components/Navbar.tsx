@@ -124,39 +124,49 @@ export default function Navbar() {
   ];
 
   return (
-    <motion.header
-      initial={{ opacity: 0, y: -12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, ease: "easeOut" }}
-      className="w-full flex items-center justify-between px-6 py-3 bg-[#0a0a0a] border-b border-white/[0.06]"
-    >
-      {/* Logo */}
-      <Link href="/" aria-label="Stacks Bridge home">
-        <StacksBridgeLogo />
-      </Link>
+    <div className="w-full flex justify-center px-6 pt-5 fixed top-0 left-0 right-0 z-50">
+      <motion.header
+        initial={{ opacity: 0, y: -16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: "easeOut" }}
+        className="
+          w-full max-w-[60%]
+          flex items-center justify-between
+          px-4 py-2.5
+          rounded-2xl
+          bg-white/[0.04] backdrop-blur-md
+          border border-white/[0.08]
+          shadow-[0_8px_32px_rgba(0,0,0,0.4)]
+        "
+      >
+        {/* Logo */}
+        <Link href="/" aria-label="Stacks Bridge home">
+          <StacksBridgeLogo />
+        </Link>
 
-      {/* Navigation tabs */}
-      <nav className="flex items-center gap-1" aria-label="Main navigation">
-        {tabs.map(({ label, key }) => (
-          <NavTab
-            key={key}
-            label={label}
-            tabKey={key}
-            activeTab={activeTab}
-            onClick={setActiveTab}
-          />
-        ))}
-      </nav>
+        {/* Navigation tabs */}
+        <nav className="flex items-center gap-1" aria-label="Main navigation">
+          {tabs.map(({ label, key }) => (
+            <NavTab
+              key={key}
+              label={label}
+              tabKey={key}
+              activeTab={activeTab}
+              onClick={setActiveTab}
+            />
+          ))}
+        </nav>
 
-      {/* Action icons */}
-      <div className="flex items-center gap-1">
-        <IconButton label="Account">
-          <User size={18} />
-        </IconButton>
-        <IconButton label="Notifications">
-          <Bell size={18} />
-        </IconButton>
-      </div>
-    </motion.header>
+        {/* Action icons */}
+        <div className="flex items-center gap-1">
+          <IconButton label="Account">
+            <User size={18} />
+          </IconButton>
+          <IconButton label="Notifications">
+            <Bell size={18} />
+          </IconButton>
+        </div>
+      </motion.header>
+    </div>
   );
 }

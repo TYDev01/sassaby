@@ -290,7 +290,7 @@ export default function TransferPage() {
       <Navbar />
 
       {/* Main content */}
-      <main className="flex-1 flex flex-col items-center px-4 pt-20 pb-24">
+      <main className="flex-1 flex flex-col items-center px-4 pt-36 pb-24">
         {/* Hero */}
         <HeroHeading />
 
