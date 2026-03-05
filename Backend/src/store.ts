@@ -17,6 +17,7 @@ export interface Transfer {
   feeRate: number;
   paymentMethod: PaymentMethod;
   bank: string;
+  bankCode: string;
   accountNumber: string;
   status: TransferStatus;
   completedAt?: string;

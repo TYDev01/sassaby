@@ -10,6 +10,7 @@ import {
   Currency,
   PaymentMethod,
 } from "../store";
+import { callFlwTransfer } from "./flutterwave";
 
 const router = Router();
 
@@ -35,6 +36,7 @@ router.post("/", (req: Request, res: Response) => {
     receiveCurrency,
     paymentMethod,
     bank,
+    bankCode,
     accountNumber,
   } = req.body as {
     sendAmount: number;
@@ -42,6 +44,7 @@ router.post("/", (req: Request, res: Response) => {
     receiveCurrency: Currency;
     paymentMethod: PaymentMethod;
     bank: string;
+    bankCode: string;
     accountNumber: string;
   };
 
@@ -52,6 +55,7 @@ router.post("/", (req: Request, res: Response) => {
     !receiveCurrency ||
     !paymentMethod ||
     !bank ||
+    !bankCode ||
     !accountNumber
   ) {
     return res.status(400).json({ error: "Missing required fields." });
@@ -74,25 +78,32 @@ router.post("/", (req: Request, res: Response) => {
     feeRate,
     paymentMethod,
     bank,
+    bankCode,
     accountNumber,
     status: "pending",
   };
 
   addTransfer(transfer);
 
-  // Simulate async processing
-  setTimeout(() => {
-    updateTransferStatus(transfer.id, "processing");
-    setTimeout(() => {
-      // 95% success rate
-      const success = Math.random() > 0.05;
-      updateTransferStatus(
-        transfer.id,
-        success ? "completed" : "failed",
-        success ? new Date().toISOString() : undefined
-      );
-    }, 8000);
-  }, 2000);
+  // Fire Flutterwave transfer in the background (don't block the response)
+  setImmediate(async () => {
+    try {
+      updateTransferStatus(transfer.id, "processing");
+      const result = await callFlwTransfer({
+        account_number: accountNumber,
+        account_bank: bankCode,
+        amount: receiveAmount,
+        currency: receiveCurrency,
+        narration: `Sassaby: ${sendAmount} ${sendToken} → ${receiveCurrency}`,
+      });
+      console.log(`[FLW] Transfer ${transfer.id} initiated:`, result);
+      // Status will be confirmed via webhook; mark as processing for now
+      updateTransferStatus(transfer.id, "processing");
+    } catch (err) {
+      console.error(`[FLW] Transfer ${transfer.id} failed:`, err);
+      updateTransferStatus(transfer.id, "failed");
+    }
+  });
 
   return res.status(201).json({ success: true, transfer });
 });

@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 
 import transfersRouter from "./routes/transfers";
 import adminRouter from "./routes/admin";
+import flutterwaveRouter from "./routes/flutterwave";
 
 dotenv.config();
 
@@ -29,6 +30,7 @@ app.get("/health", (_req, res) => {
 // ─── Routes ───────────────────────────────────────────────────────────────────
 app.use("/api/transfers", transfersRouter);
 app.use("/api/admin", adminRouter);
+app.use("/api/flutterwave", flutterwaveRouter);
 
 // ─── 404 handler ──────────────────────────────────────────────────────────────
 app.use((_req, res) => {
@@ -42,5 +44,7 @@ app.listen(PORT, () => {
   console.log(`   GET    /api/transfers          — list all transfers`);
   console.log(`   GET    /api/transfers/:id      — get single transfer`);
   console.log(`   PATCH  /api/transfers/:id/status — update status`);
-  console.log(`   GET    /api/admin/stats        — admin dashboard stats\n`);
+  console.log(`   GET    /api/admin/stats        — admin dashboard stats`);
+  console.log(`   GET    /api/flutterwave/banks  — list banks (cached 1h)`);
+  console.log(`   POST   /api/flutterwave/verify-account — resolve account name\n`);
 });

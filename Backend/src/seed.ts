@@ -56,6 +56,7 @@ for (let i = 0; i < 40; i++) {
     feeRate,
     paymentMethod: method,
     bank,
+    bankCode: "044",
     accountNumber: `0${Math.floor(Math.random() * 1_000_000_000).toString().padStart(9, "0")}`,
     status,
     ...(status === "completed" ? { completedAt: createdAt } : {}),

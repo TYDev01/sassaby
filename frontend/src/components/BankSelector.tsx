@@ -1,41 +1,41 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, Search, Building2 } from "lucide-react";
+import {
+  ChevronDown,
+  Search,
+  Building2,
+  Loader2,
+  CheckCircle2,
+  AlertCircle,
+  RefreshCw,
+} from "lucide-react";
+import { fetchBanks, verifyAccount, FlwBank } from "@/lib/api";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// ─── Re-export Bank type (aligned with Flutterwave) ──────────────────────────
 
 export interface Bank {
-  id: string;
+  id: string;   // string version of FLW numeric id
   name: string;
+  code: string; // bank code used for account resolution
   country: string;
-  code: string;
 }
 
 export interface BankSelectorProps {
-  /** Currently selected bank (null = none selected) */
   selected: Bank | null;
-  /** Notifies parent when user selects a bank */
   onSelect: (bank: Bank) => void;
-  /** Account number input value */
   accountNumber: string;
-  /** Notifies parent when account number changes */
   onAccountNumberChange: (value: string) => void;
+  /** Called whenever the resolved account name changes (null = unresolved) */
+  onAccountNameResolved?: (name: string | null) => void;
 }
 
-// ─── Static Bank Data ─────────────────────────────────────────────────────────
+// ─── Map FLW bank → our Bank shape ───────────────────────────────────────────
 
-export const BANKS: Bank[] = [
-  { id: "gtb",   name: "Guaranty Trust Bank", country: "NG", code: "058" },
-  { id: "uba",   name: "United Bank for Africa", country: "NG", code: "033" },
-  { id: "access",name: "Access Bank", country: "NG", code: "044" },
-  { id: "zenith", name: "Zenith Bank", country: "NG", code: "057" },
-  { id: "first",  name: "First Bank", country: "NG", code: "011" },
-  { id: "fcmb",   name: "FCMB", country: "NG", code: "214" },
-  { id: "kuda",   name: "Kuda Bank", country: "NG", code: "090267" },
-  { id: "opay",   name: "OPay", country: "NG", code: "999992" },
-];
+function toBank(b: FlwBank): Bank {
+  return { id: String(b.id), name: b.name, code: b.code, country: "NG" };
+}
 
 // ─── Bank Option ──────────────────────────────────────────────────────────────
 
@@ -76,15 +76,22 @@ function BankOption({
 function BankDropdown({
   selected,
   onSelect,
+  banks,
+  loading,
+  loadError,
+  onRetry,
 }: {
   selected: Bank | null;
   onSelect: (bank: Bank) => void;
+  banks: Bank[];
+  loading: boolean;
+  loadError: string | null;
+  onRetry: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const ref = useRef<HTMLDivElement>(null);
 
-  // Close on outside click
   useEffect(() => {
     function handle(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) {
@@ -96,9 +103,10 @@ function BankDropdown({
     return () => document.removeEventListener("mousedown", handle);
   }, []);
 
-  // Filter banks by query
-  const filtered = BANKS.filter((b) =>
-    b.name.toLowerCase().includes(query.toLowerCase())
+  const filtered = banks.filter(
+    (b) =>
+      b.name.toLowerCase().includes(query.toLowerCase()) ||
+      b.code.includes(query)
   );
 
   function handleSelect(bank: Bank) {
@@ -112,27 +120,31 @@ function BankDropdown({
       {/* Trigger */}
       <motion.button
         whileTap={{ scale: 0.99 }}
-        onClick={() => setOpen((prev) => !prev)}
+        onClick={() => !loading && setOpen((prev) => !prev)}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label="Choose bank"
+        disabled={loading}
         className="
           w-full flex items-center justify-between
           bg-[#111111] border border-white/[0.08]
           rounded-xl px-4 py-3 text-sm
           hover:border-white/20 transition-colors duration-200
           focus:outline-none cursor-pointer
+          disabled:opacity-60 disabled:cursor-not-allowed
         "
       >
         <span className={selected ? "text-white" : "text-gray-500"}>
-          {selected ? selected.name : "Choose bank"}
+          {loading ? "Loading banks…" : selected ? selected.name : "Choose bank"}
         </span>
-        <ChevronDown
-          size={16}
-          className={`text-gray-500 transition-transform duration-200 ${
-            open ? "rotate-180" : ""
-          }`}
-        />
+        {loading ? (
+          <Loader2 size={15} className="text-gray-500 animate-spin" />
+        ) : (
+          <ChevronDown
+            size={16}
+            className={`text-gray-500 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+          />
+        )}
       </motion.button>
 
       {/* Panel */}
@@ -157,37 +169,100 @@ function BankDropdown({
               <input
                 autoFocus
                 type="text"
-                placeholder="Search bank..."
+                placeholder="Search bank name or code…"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                className="
-                  flex-1 bg-transparent text-sm text-white
-                  placeholder:text-gray-600 focus:outline-none
-                "
+                className="flex-1 bg-transparent text-sm text-white placeholder:text-gray-600 focus:outline-none"
               />
             </div>
 
-            {/* List */}
-            <div className="max-h-52 overflow-y-auto p-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/10">
-              {filtered.length === 0 ? (
-                <p className="text-center text-gray-500 text-sm py-4">
-                  No banks found
-                </p>
-              ) : (
-                filtered.map((bank) => (
-                  <BankOption
-                    key={bank.id}
-                    bank={bank}
-                    isSelected={selected?.id === bank.id}
-                    onClick={() => handleSelect(bank)}
-                  />
-                ))
-              )}
-            </div>
+            {/* Error state */}
+            {loadError ? (
+              <div className="flex flex-col items-center gap-2 py-6 px-4 text-center">
+                <AlertCircle size={20} className="text-red-400" />
+                <p className="text-red-400 text-xs">{loadError}</p>
+                <button
+                  onClick={() => { onRetry(); setOpen(false); }}
+                  className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-white mt-1 cursor-pointer"
+                >
+                  <RefreshCw size={12} /> Retry
+                </button>
+              </div>
+            ) : (
+              <div className="max-h-56 overflow-y-auto p-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/10">
+                {filtered.length === 0 ? (
+                  <p className="text-center text-gray-500 text-sm py-4">No banks found</p>
+                ) : (
+                  filtered.map((bank) => (
+                    <BankOption
+                      key={bank.id}
+                      bank={bank}
+                      isSelected={selected?.id === bank.id}
+                      onClick={() => handleSelect(bank)}
+                    />
+                  ))
+                )}
+              </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
     </div>
+  );
+}
+
+// ─── Account Name Badge ───────────────────────────────────────────────────────
+
+type ResolveState = "idle" | "loading" | "success" | "error";
+
+function AccountNameBadge({
+  state,
+  name,
+  error,
+}: {
+  state: ResolveState;
+  name: string | null;
+  error: string | null;
+}) {
+  return (
+    <AnimatePresence mode="wait">
+      {state === "loading" && (
+        <motion.div
+          key="loading"
+          initial={{ opacity: 0, y: 4 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -4 }}
+          className="flex items-center gap-1.5 text-xs text-gray-400"
+        >
+          <Loader2 size={11} className="animate-spin" />
+          Verifying account…
+        </motion.div>
+      )}
+      {state === "success" && name && (
+        <motion.div
+          key="success"
+          initial={{ opacity: 0, y: 4 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -4 }}
+          className="flex items-center gap-1.5 text-xs text-emerald-400"
+        >
+          <CheckCircle2 size={12} />
+          <span className="font-medium">{name}</span>
+        </motion.div>
+      )}
+      {state === "error" && error && (
+        <motion.div
+          key="error"
+          initial={{ opacity: 0, y: 4 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -4 }}
+          className="flex items-center gap-1.5 text-xs text-red-400"
+        >
+          <AlertCircle size={12} />
+          {error}
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
 
@@ -196,23 +271,21 @@ function BankDropdown({
 function AccountNumberInput({
   value,
   onChange,
+  disabled,
 }: {
   value: string;
   onChange: (v: string) => void;
+  disabled?: boolean;
 }) {
-  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const raw = e.target.value.replace(/\D/g, ""); // digits only
-    onChange(raw);
-  }
-
   return (
     <input
       type="text"
       inputMode="numeric"
       maxLength={10}
-      placeholder="Enter account number"
+      placeholder={disabled ? "Select a bank first" : "Enter account number"}
       value={value}
-      onChange={handleChange}
+      onChange={(e) => onChange(e.target.value.replace(/\D/g, ""))}
+      disabled={disabled}
       aria-label="Bank account number"
       className="
         w-full bg-[#111111] border border-white/[0.08]
@@ -221,6 +294,7 @@ function AccountNumberInput({
         hover:border-white/20 focus:border-white/30
         focus:outline-none transition-colors duration-200
         caret-[#f97316]
+        disabled:opacity-50 disabled:cursor-not-allowed
       "
     />
   );
@@ -233,24 +307,111 @@ export default function BankSelector({
   onSelect,
   accountNumber,
   onAccountNumberChange,
+  onAccountNameResolved,
 }: BankSelectorProps) {
+  // Bank list state
+  const [banks, setBanks] = useState<Bank[]>([]);
+  const [banksLoading, setBanksLoading] = useState(true);
+  const [banksError, setBanksError] = useState<string | null>(null);
+
+  // Account resolution state
+  const [resolveState, setResolveState] = useState<ResolveState>("idle");
+  const [accountName, setAccountName] = useState<string | null>(null);
+  const [resolveError, setResolveError] = useState<string | null>(null);
+
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── Load banks from backend on mount ─────────────────────────────────────
+  const loadBanks = useCallback(async () => {
+    setBanksLoading(true);
+    setBanksError(null);
+    try {
+      const raw = await fetchBanks("NG");
+      setBanks(raw.map(toBank));
+    } catch {
+      setBanksError("Could not load banks. Check your connection.");
+    } finally {
+      setBanksLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadBanks();
+  }, [loadBanks]);
+
+  // ── Resolve account name once bank + 10-digit account number are ready ────
+  useEffect(() => {
+    setAccountName(null);
+    setResolveError(null);
+    setResolveState("idle");
+    onAccountNameResolved?.(null);
+
+    if (!selected || accountNumber.length !== 10) return;
+
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(async () => {
+      setResolveState("loading");
+      try {
+        const result = await verifyAccount(accountNumber, selected.code);
+        setAccountName(result.account_name);
+        setResolveState("success");
+        onAccountNameResolved?.(result.account_name);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : "Account not found.";
+        // If the bank simply doesn't support verification, stay quiet — user can still proceed
+        const isUnsupported =
+          msg.toLowerCase().includes("not supported") ||
+          msg.toLowerCase().includes("can still proceed");
+        if (isUnsupported) {
+          setResolveState("idle");
+          onAccountNameResolved?.(null);
+        } else {
+          setResolveError(msg);
+          setResolveState("error");
+          onAccountNameResolved?.(null);
+        }
+      }
+    }, 600);
+
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [selected, accountNumber, onAccountNameResolved]);
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.45, ease: "easeOut", delay: 0.15 }}
-      className="w-full flex items-stretch gap-3"
+      className="w-full flex flex-col gap-3"
     >
-      {/* Bank dropdown — wider */}
-      <div className="flex-1">
-        <BankDropdown selected={selected} onSelect={onSelect} />
+      {/* Row: bank dropdown + account number */}
+      <div className="flex items-stretch gap-3">
+        <div className="flex-1">
+          <BankDropdown
+            selected={selected}
+            onSelect={onSelect}
+            banks={banks}
+            loading={banksLoading}
+            loadError={banksError}
+            onRetry={loadBanks}
+          />
+        </div>
+        <div className="flex-1">
+          <AccountNumberInput
+            value={accountNumber}
+            onChange={onAccountNumberChange}
+            disabled={!selected}
+          />
+        </div>
       </div>
 
-      {/* Account number — fixed width */}
-      <div className="flex-1">
-        <AccountNumberInput
-          value={accountNumber}
-          onChange={onAccountNumberChange}
+      {/* Account name / verification feedback */}
+      <div className="px-1">
+        <AccountNameBadge
+          state={resolveState}
+          name={accountName}
+          error={resolveError}
         />
       </div>
     </motion.div>

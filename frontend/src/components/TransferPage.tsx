@@ -8,9 +8,7 @@ import Navbar from "@/components/Navbar";
 import TransferCard, { SendToken } from "@/components/TransferCard";
 import ReceiveCard from "@/components/ReceiveCard";
 import BankSelector, { Bank } from "@/components/BankSelector";
-import PaymentMethodSelector, {
-  PaymentMethodId,
-} from "@/components/PaymentMethodSelector";
+
 import { createTransfer } from "@/lib/api";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -23,13 +21,6 @@ const TOKEN_USD_RATES: Record<SendToken, number> = {
   STX: 1.23,
   USDCx: 1.0,
   BTC: 85000,
-};
-
-/** Fee multiplier per payment method (deducted from output) */
-const FEE_RATES: Record<PaymentMethodId, number> = {
-  instant: 0.015,
-  same_day: 0.008,
-  standard: 0.003,
 };
 
 /** Minimum receive amount per currency (USD-denominated base) */
@@ -233,7 +224,6 @@ export default function TransferPage() {
   const [currency, setCurrency] = useState<Currency>("NGN");
   const [selectedBank, setSelectedBank] = useState<Bank | null>(null);
   const [accountNumber, setAccountNumber] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethodId | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   // ── Derived values ───────────────────────────────────────────────────────────
@@ -246,12 +236,8 @@ export default function TransferPage() {
     [parsedAmount, sendToken]
   );
 
-  /** Receive amount after fee deduction */
-  const receiveAmount = useMemo(() => {
-    if (!paymentMethod) return usdEquivalent;
-    const fee = FEE_RATES[paymentMethod];
-    return usdEquivalent * (1 - fee);
-  }, [usdEquivalent, paymentMethod]);
+  /** Receive amount (no fee deduction) */
+  const receiveAmount = usdEquivalent;
 
   /** Minimum for selected currency */
   const minReceive = useMemo(() => MIN_RECEIVE[currency] ?? 1, [currency]);
@@ -261,23 +247,23 @@ export default function TransferPage() {
     () =>
       parsedAmount > 0 &&
       selectedBank !== null &&
-      accountNumber.length >= 10 &&
-      paymentMethod !== null,
-    [parsedAmount, selectedBank, accountNumber, paymentMethod]
+      accountNumber.length >= 10,
+    [parsedAmount, selectedBank, accountNumber]
   );
 
   // ── Handlers ─────────────────────────────────────────────────────────────────
 
   const handleSubmit = useCallback(async () => {
-    if (!isReady || isLoading || !selectedBank || !paymentMethod) return;
+    if (!isReady || isLoading || !selectedBank) return;
     setIsLoading(true);
     try {
       const transfer = await createTransfer({
         sendAmount: parsedAmount,
         sendToken,
         receiveCurrency: currency,
-        paymentMethod,
+        paymentMethod: "standard",
         bank: selectedBank.name,
+        bankCode: selectedBank.code,
         accountNumber,
       });
       console.log("Transfer created:", transfer);
@@ -286,7 +272,7 @@ export default function TransferPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [isReady, isLoading, parsedAmount, sendToken, currency, selectedBank, accountNumber, paymentMethod]);
+  }, [isReady, isLoading, parsedAmount, sendToken, currency, selectedBank, accountNumber]);
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
@@ -339,12 +325,6 @@ export default function TransferPage() {
 
           {/* Spacer */}
           <div className="h-4" />
-
-          {/* Payment method */}
-          <PaymentMethodSelector
-            selected={paymentMethod}
-            onSelect={setPaymentMethod}
-          />
 
           {/* Quick transfer info */}
           <div className="h-1" />

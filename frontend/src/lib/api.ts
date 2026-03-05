@@ -62,6 +62,7 @@ export async function createTransfer(payload: {
   receiveCurrency: Currency;
   paymentMethod: PaymentMethod;
   bank: string;
+  bankCode: string;
   accountNumber: string;
 }): Promise<Transfer> {
   const res = await fetch(`${BASE_URL}/api/transfers`, {
@@ -72,4 +73,41 @@ export async function createTransfer(payload: {
   if (!res.ok) throw new Error("Failed to create transfer");
   const data = await res.json();
   return data.transfer;
+}
+
+// ─── Flutterwave helpers ──────────────────────────────────────────────────────
+
+export interface FlwBank {
+  id: number;
+  code: string;
+  name: string;
+}
+
+export interface VerifiedAccount {
+  account_name: string;
+  account_number: string;
+}
+
+export async function fetchBanks(country = "NG"): Promise<FlwBank[]> {
+  const res = await fetch(
+    `${BASE_URL}/api/flutterwave/banks?country=${country}`,
+    { cache: "no-store" }
+  );
+  if (!res.ok) throw new Error("Failed to fetch banks");
+  const data = await res.json();
+  return data.banks as FlwBank[];
+}
+
+export async function verifyAccount(
+  account_number: string,
+  account_bank: string
+): Promise<VerifiedAccount> {
+  const res = await fetch(`${BASE_URL}/api/flutterwave/verify-account`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ account_number, account_bank }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? "Account verification failed");
+  return data as VerifiedAccount;
 }
