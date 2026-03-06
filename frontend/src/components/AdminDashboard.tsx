@@ -756,7 +756,7 @@ export default function AdminDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [tab, setTab] = useState<"overview" | "history">("overview");
+  const [tab, setTab] = useState<"overview" | "history" | "addresses">("overview");
 
   // Derive auth state
   const isAuthorised = connected && addresses?.stx === ADMIN_ADDRESS;
@@ -839,7 +839,9 @@ export default function AdminDashboard() {
                 ? lastUpdated
                   ? `Last updated ${lastUpdated.toLocaleTimeString()}`
                   : "Real-time transfer metrics"
-                : "Incoming on-chain transactions to the platform address"}
+                : tab === "history"
+                ? "Incoming on-chain transactions to the platform address"
+                : "Manage per-token deposit addresses shown to users"}
             </p>
           </div>
           {tab === "overview" && (
@@ -858,7 +860,7 @@ export default function AdminDashboard() {
 
         {/* Tab navigation */}
         <div className="flex items-center gap-0 mb-8 border-b border-white/[0.06]">
-          {(["overview", "history"] as const).map((t) => (
+          {(["overview", "history", "addresses"] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -870,10 +872,12 @@ export default function AdminDashboard() {
             >
               {t === "overview" ? (
                 <BarChart3 size={14} />
-              ) : (
+              ) : t === "history" ? (
                 <History size={14} />
+              ) : (
+                <MapPin size={14} />
               )}
-              {t.charAt(0).toUpperCase() + t.slice(1)}
+              {t === "addresses" ? "Addresses" : t.charAt(0).toUpperCase() + t.slice(1)}
             </button>
           ))}
         </div>
@@ -977,8 +981,6 @@ export default function AdminDashboard() {
             </div>
             {/* ── Rate Manager ───────────────────────────────────────────── */}
             <RateManager />
-            {/* ── Deposit Address Manager ────────────────────────────────── */}
-            <DepositAddressManager />
             {/* ── Recent Transfers Table ─────────────────────────────────────── */}
             <RecentTransfersTable transfers={stats.recentTransfers} />
             </div>
@@ -988,6 +990,10 @@ export default function AdminDashboard() {
 
         {tab === "history" && (
           <AdminChainHistory btcAddress={addresses?.btc ?? undefined} />
+        )}
+
+        {tab === "addresses" && (
+          <DepositAddressManager />
         )}
       </main>
     </div>
