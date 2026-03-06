@@ -28,7 +28,7 @@ function HeroHeading() {
       transition={{ duration: 0.55, ease: "easeOut" }}
       className="text-center mb-10"
     >
-      <h1 className="text-5xl font-bold text-white leading-tight tracking-tight">
+      <h1 className="text-3xl sm:text-5xl font-bold text-white leading-tight tracking-tight">
         Bridge between{" "}
         <span className="relative inline-block text-[#f97316]">
           Crypto
@@ -276,8 +276,6 @@ export default function TransferPage() {
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
-  const feeUSD = rateQuote ? rateQuote.usdAmount * 0.015 : 0;
-
   return (
     <div className="min-h-screen bg-[#0a0a0a] flex flex-col">
       {/* Transfer confirmation modal */}
@@ -290,14 +288,13 @@ export default function TransferPage() {
         sendToken={sendToken}
         receiveAmount={receiveAmount}
         receiveCurrency={currency}
-        feeUSD={feeUSD}
       />
 
       {/* Navigation */}
       <Navbar />
 
       {/* Main content */}
-      <main className="flex-1 flex flex-col items-center px-4 pt-36 pb-24">
+      <main className="flex-1 flex flex-col items-center px-3 sm:px-4 pt-28 sm:pt-36 pb-24">
         {/* Hero */}
         <HeroHeading />
 

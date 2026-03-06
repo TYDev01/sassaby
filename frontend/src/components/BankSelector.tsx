@@ -386,7 +386,7 @@ export default function BankSelector({
       className="w-full flex flex-col gap-3"
     >
       {/* Row: bank dropdown + account number */}
-      <div className="flex items-stretch gap-3">
+      <div className="flex flex-col sm:flex-row items-stretch gap-3">
         <div className="flex-1">
           <BankDropdown
             selected={selected}

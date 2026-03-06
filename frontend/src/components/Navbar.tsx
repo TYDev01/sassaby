@@ -81,7 +81,7 @@ function NavTab({
       href={href}
       target={isExternal ? "_blank" : undefined}
       rel={isExternal ? "noopener noreferrer" : undefined}
-      className="relative px-8 py-2.5 text-sm font-medium transition-colors duration-200 focus:outline-none cursor-pointer"
+      className="relative px-4 sm:px-8 py-2.5 text-sm font-medium transition-colors duration-200 focus:outline-none cursor-pointer"
     >
       {isActive && (
         <motion.div
@@ -139,9 +139,9 @@ export default function Navbar() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, ease: "easeOut" }}
         className="
-          w-full max-w-[60%]
+          w-full max-w-[95%] sm:max-w-[80%] lg:max-w-[60%]
           flex items-center justify-between
-          px-4 py-2.5
+          px-3 sm:px-4 py-2.5
           rounded-2xl
           bg-white/[0.04] backdrop-blur-md
           border border-white/[0.08]
@@ -181,12 +181,14 @@ export default function Navbar() {
               <LayoutDashboard size={18} />
             </motion.div>
           </Link>
-          <IconButton label="Account">
-            <User size={18} />
-          </IconButton>
-          <IconButton label="Notifications">
-            <Bell size={18} />
-          </IconButton>
+          <span className="hidden sm:flex items-center gap-1">
+            <IconButton label="Account">
+              <User size={18} />
+            </IconButton>
+            <IconButton label="Notifications">
+              <Bell size={18} />
+            </IconButton>
+          </span>
         </div>
       </motion.header>
     </div>

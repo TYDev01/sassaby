@@ -447,7 +447,7 @@ function RateManager() {
             const isSaved  = savedFlag[cur.code];
 
             return (
-              <div key={cur.code} className="px-6 py-5 flex flex-col sm:flex-row sm:items-center gap-4">
+              <div key={cur.code} className="px-4 sm:px-6 py-5 flex flex-col gap-4">
                 {/* Currency label */}
                 <div className="flex items-center gap-3 min-w-[160px]">
                   <span className="text-xl">{cur.flag}</span>
@@ -486,7 +486,7 @@ function RateManager() {
                 </div>
 
                 {/* Rate input */}
-                <div className="flex items-center gap-2 flex-1">
+                <div className="flex items-center gap-2 flex-1 flex-wrap">
                   <div className="relative flex-1 max-w-[200px]">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-xs font-medium pointer-events-none">
                       1 USD =
@@ -662,7 +662,7 @@ function DepositAddressManager() {
             const hasExisting = !!existing?.address;
 
             return (
-              <div key={token} className="px-6 py-5 flex flex-col gap-3">
+              <div key={token} className="px-4 sm:px-6 py-5 flex flex-col gap-3">
                 {/* Token label */}
                 <div className="flex items-center gap-3">
                   <Image src={imgSrc} alt={token} width={32} height={32} className="rounded-full" />
@@ -826,15 +826,15 @@ export default function AdminDashboard() {
     <div className="min-h-screen bg-[#0a0a0a] flex flex-col">
       <Navbar />
 
-      <main className="flex-1 px-6 pt-32 pb-20 max-w-[1280px] mx-auto w-full">
+      <main className="flex-1 px-4 sm:px-6 pt-28 sm:pt-32 pb-20 max-w-[1280px] mx-auto w-full">
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
-          className="flex items-start justify-between mb-6"
+          className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 mb-6"
         >
           <div>
-            <h1 className="text-3xl font-bold text-white tracking-tight">Admin Dashboard</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">Admin Dashboard</h1>
             <p className="text-gray-500 text-sm mt-1">
               {tab === "overview"
                 ? lastUpdated
@@ -865,7 +865,7 @@ export default function AdminDashboard() {
             <button
               key={t}
               onClick={() => setTab(t)}
-              className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 -mb-px transition-all duration-200 cursor-pointer capitalize ${
+              className={`flex items-center gap-1.5 px-3 sm:px-5 py-3 text-sm font-medium border-b-2 -mb-px transition-all duration-200 cursor-pointer capitalize ${
                 tab === t
                   ? "border-[#f97316] text-white"
                   : "border-transparent text-gray-500 hover:text-gray-300"
@@ -905,7 +905,7 @@ export default function AdminDashboard() {
         ) : stats ? (
           <div className="flex flex-col gap-8">
             {/* ── Primary KPI Cards ─────────────────────────────────────────── */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <StatCard
                 label="Total Volume"
                 value={fmtUSD(stats.totalVolumeUSD)}
@@ -940,7 +940,7 @@ export default function AdminDashboard() {
             </div>
 
             {/* ── Status KPI Cards ──────────────────────────────────────────── */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <StatCard
                 label="Completed"
                 value={stats.completedTransactions.toLocaleString()}

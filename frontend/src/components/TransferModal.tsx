@@ -21,8 +21,6 @@ interface TransferModalProps {
   sendToken: SendToken;
   receiveAmount: number;
   receiveCurrency: string;
-  /** 1.5% fee amount in USD */
-  feeUSD: number;
 }
 
 // ─── Token display helpers ────────────────────────────────────────────────────
@@ -50,7 +48,6 @@ export default function TransferModal({
   sendToken,
   receiveAmount,
   receiveCurrency,
-  feeUSD,
 }: TransferModalProps) {
   const [depositAddress, setDepositAddress] = useState<DepositAddress | null>(null);
   const [addressLoading, setAddressLoading] = useState(false);
@@ -129,14 +126,15 @@ export default function TransferModal({
             exit={{ opacity: 0, scale: 0.94, y: 20 }}
             transition={{ duration: 0.25, ease: "easeOut" }}
             className="
-              fixed inset-0 z-50 flex items-center justify-center px-4
+              fixed inset-0 z-50 flex items-end sm:items-center justify-center px-0 sm:px-4
               pointer-events-none
             "
           >
             <div
               className="
-                relative w-full max-w-[480px] bg-[#111111] border border-white/[0.09]
-                rounded-2xl shadow-2xl overflow-hidden pointer-events-auto
+                relative w-full sm:max-w-[480px] bg-[#111111] border border-white/[0.09]
+                rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden pointer-events-auto
+                max-h-[90dvh] overflow-y-auto
               "
               onClick={(e) => e.stopPropagation()}
             >
@@ -173,31 +171,18 @@ export default function TransferModal({
                     >
                       {sendToken}
                     </span>
-                  </div>
-                  <p className="text-gray-500 text-xs">{TOKEN_LABELS[sendToken]}</p>
-
-                  <div className="border-t border-white/[0.06] pt-3 mt-1 grid grid-cols-2 gap-3">
-                    <div>
-                      <p className="text-gray-500 text-[11px] uppercase tracking-wider mb-0.5">
-                        You receive
-                      </p>
-                      <p className="text-white text-sm font-semibold">
+                    <span className="ml-auto text-right">
+                      <span className="block text-gray-500 text-[11px] uppercase tracking-wider leading-none mb-0.5">You receive</span>
+                      <span className="text-white text-sm font-semibold">
                         {receiveAmount.toLocaleString("en-US", {
                           minimumFractionDigits: 2,
                           maximumFractionDigits: 2,
                         })}{" "}
                         {receiveCurrency}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-gray-500 text-[11px] uppercase tracking-wider mb-0.5">
-                        Protocol fee (1.5%)
-                      </p>
-                      <p className="text-white text-sm font-semibold">
-                        ${feeUSD.toFixed(4)} USD
-                      </p>
-                    </div>
+                      </span>
+                    </span>
                   </div>
+                  <p className="text-gray-500 text-xs">{TOKEN_LABELS[sendToken]}</p>
                 </div>
 
                 {/* Deposit address / QR */}
@@ -268,7 +253,7 @@ export default function TransferModal({
                       >
                         <QRCode
                           value={depositAddress.address}
-                          size={180}
+                          size={160}
                           bgColor="#ffffff"
                           fgColor="#000000"
                           level="M"

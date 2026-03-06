@@ -355,14 +355,14 @@ export default function HistoryPage() {
     <div className="min-h-screen bg-[#0a0a0a] flex flex-col">
       <Navbar />
 
-      <main className="flex-1 flex flex-col px-6 pt-32 pb-20 max-w-[1200px] mx-auto w-full">
+      <main className="flex-1 flex flex-col px-4 sm:px-6 pt-28 sm:pt-32 pb-20 max-w-[1200px] mx-auto w-full">
         {/* Page title */}
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           className="mb-8"
         >
-          <h1 className="text-3xl font-bold text-white tracking-tight">
+          <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
             Transfer History
           </h1>
           <p className="text-gray-500 text-sm mt-1">
