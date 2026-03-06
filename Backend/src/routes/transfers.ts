@@ -8,19 +8,14 @@ import {
   Transfer,
   SendToken,
   Currency,
-  PaymentMethod,
 } from "../store";
 import { callFlwTransfer } from "./flutterwave";
 import { getTokenPriceUSD } from "./rates";
 
 const router = Router();
 
-// ─── Fee rates per payment method ─────────────────────────────────────────────
-const FEE_RATES: Record<PaymentMethod, number> = {
-  instant: 0.015,
-  same_day: 0.008,
-  standard: 0.003,
-};
+// ─── Platform fee (all transfers are instant) ────────────────────────────────
+const FEE_RATE = 0.015; // 1.5%
 
 // ─── POST /api/transfers — create a new transfer ─────────────────────────────
 router.post("/", async (req: Request, res: Response) => {
@@ -28,7 +23,6 @@ router.post("/", async (req: Request, res: Response) => {
     sendAmount,
     sendToken,
     receiveCurrency,
-    paymentMethod,
     bank,
     bankCode,
     accountNumber,
@@ -36,7 +30,6 @@ router.post("/", async (req: Request, res: Response) => {
     sendAmount: number;
     sendToken: SendToken;
     receiveCurrency: Currency;
-    paymentMethod: PaymentMethod;
     bank: string;
     bankCode: string;
     accountNumber: string;
@@ -47,7 +40,6 @@ router.post("/", async (req: Request, res: Response) => {
     !sendAmount ||
     !sendToken ||
     !receiveCurrency ||
-    !paymentMethod ||
     !bank ||
     !bankCode ||
     !accountNumber
@@ -64,8 +56,7 @@ router.post("/", async (req: Request, res: Response) => {
     return res.status(502).json({ error: "Could not fetch live token price. Please try again." });
   }
 
-  const feeRate = FEE_RATES[paymentMethod] ?? 0;
-  const fee = usdEquivalent * feeRate;
+  const fee = usdEquivalent * FEE_RATE;
   const receiveAmount = usdEquivalent - fee;
 
   const transfer: Transfer = {
@@ -77,8 +68,7 @@ router.post("/", async (req: Request, res: Response) => {
     receiveAmount,
     receiveCurrency,
     fee,
-    feeRate,
-    paymentMethod,
+    feeRate: FEE_RATE,
     bank,
     bankCode,
     accountNumber,

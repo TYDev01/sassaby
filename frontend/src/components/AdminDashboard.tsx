@@ -10,7 +10,6 @@ import {
   Clock,
   XCircle,
   BarChart3,
-  Layers,
   RefreshCw,
   ArrowUpRight,
   ShieldAlert,
@@ -28,10 +27,7 @@ import {
   YAxis,
   Tooltip,
   ResponsiveContainer,
-  PieChart,
-  Pie,
   Cell,
-  Legend,
 } from "recharts";
 import { toast } from "sonner";
 import Navbar from "@/components/Navbar";
@@ -138,7 +134,6 @@ function RecentTransfersTable({ transfers }: { transfers: Transfer[] }) {
                 <th className="px-6 py-3 text-left font-medium">USD Value</th>
                 <th className="px-6 py-3 text-left font-medium">Receive</th>
                 <th className="px-6 py-3 text-left font-medium">Bank</th>
-                <th className="px-6 py-3 text-left font-medium">Method</th>
                 <th className="px-6 py-3 text-left font-medium">Status</th>
               </tr>
             </thead>
@@ -171,9 +166,6 @@ function RecentTransfersTable({ transfers }: { transfers: Transfer[] }) {
                     {fmt(t.receiveAmount)} {t.receiveCurrency}
                   </td>
                   <td className="px-6 py-3.5 text-gray-400">{t.bank}</td>
-                  <td className="px-6 py-3.5 text-gray-400 capitalize">
-                    {t.paymentMethod.replace("_", " ")}
-                  </td>
                   <td className="px-6 py-3.5">
                     <StatusBadge status={t.status} />
                   </td>
@@ -249,60 +241,6 @@ const CURRENCY_COLORS: Record<string, string> = {
   GHS: "#3b82f6",
   KES: "#a855f7",
 };
-
-function VolumeByMethodChart({ data }: { data: AdminStats["volumeByMethod"] }) {
-  const chartData = Object.entries(data).map(([method, volume]) => ({
-    method: method.replace("_", " "),
-    volume,
-  }));
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.4, duration: 0.45 }}
-      className="bg-[#111111] border border-white/[0.07] rounded-2xl px-6 py-5"
-    >
-      <div className="flex items-center gap-2 mb-5">
-        <Layers size={16} className="text-[#f97316]" />
-        <h2 className="text-white font-semibold text-sm">Volume by Payment Method (USD)</h2>
-      </div>
-      <ResponsiveContainer width="100%" height={180}>
-        <PieChart>
-          <Pie
-            data={chartData}
-            dataKey="volume"
-            nameKey="method"
-            cx="50%"
-            cy="50%"
-            outerRadius={70}
-            innerRadius={40}
-            paddingAngle={3}
-          >
-            {chartData.map((_, i) => (
-              <Cell
-                key={i}
-                fill={["#f97316", "#6366f1", "#10b981"][i % 3]}
-              />
-            ))}
-          </Pie>
-          <Legend
-            formatter={(v) => <span style={{ color: "#9ca3af", fontSize: 12 }}>{v}</span>}
-          />
-          <Tooltip
-            contentStyle={{
-              background: "#1a1a1a",
-              border: "1px solid rgba(255,255,255,0.08)",
-              borderRadius: 10,
-              color: "#fff",
-            }}
-            formatter={(v) => [`$${fmt(Number(v ?? 0))}`, "Volume"]}
-          />
-        </PieChart>
-      </ResponsiveContainer>
-    </motion.div>
-  );
-}
 
 // ─── Currency Distribution ────────────────────────────────────────────────────
 
@@ -852,9 +790,8 @@ export default function AdminDashboard() {
             </div>
 
             {/* ── Charts Row ────────────────────────────────────────────────── */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <VolumeByTokenChart data={stats.volumeByToken} />
-              <VolumeByMethodChart data={stats.volumeByMethod} />
               <CurrencyDistributionChart data={stats.volumeByCurrency} />
             </div>
             {/* ── Rate Manager ───────────────────────────────────────────── */}

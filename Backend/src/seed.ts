@@ -3,7 +3,6 @@ import {
   Transfer,
   SendToken,
   Currency,
-  PaymentMethod,
   updateTransferStatus,
 } from "./store";
 import { v4 as uuidv4 } from "uuid";
@@ -12,12 +11,11 @@ import { v4 as uuidv4 } from "uuid";
 
 const tokens: SendToken[] = ["STX", "USDCx", "BTC"];
 const currencies: Currency[] = ["NGN", "GHS", "KES"];
-const methods: PaymentMethod[] = ["instant", "same_day", "standard"];
 const banks = ["GTBank", "Access Bank", "Zenith Bank", "First Bank", "UBA", "Equity Bank", "KCB"];
 const statuses: Transfer["status"][] = ["completed", "completed", "completed", "failed", "pending"];
 
 const TOKEN_USD: Record<SendToken, number> = { STX: 1.23, USDCx: 1.0, BTC: 85000 };
-const FEE: Record<PaymentMethod, number> = { instant: 0.015, same_day: 0.008, standard: 0.003 };
+const FEE_RATE = 0.015;
 
 function randomBetween(min: number, max: number) {
   return Math.random() * (max - min) + min;
@@ -34,12 +32,11 @@ console.log("Seeding 40 demo transfers...");
 for (let i = 0; i < 40; i++) {
   const token = tokens[Math.floor(Math.random() * tokens.length)];
   const currency = currencies[Math.floor(Math.random() * currencies.length)];
-  const method = methods[Math.floor(Math.random() * methods.length)];
   const bank = banks[Math.floor(Math.random() * banks.length)];
   const status = statuses[Math.floor(Math.random() * statuses.length)];
   const sendAmount = parseFloat(randomBetween(5, 2000).toFixed(4));
   const usdEquivalent = sendAmount * TOKEN_USD[token];
-  const feeRate = FEE[method];
+  const feeRate = FEE_RATE;
   const fee = usdEquivalent * feeRate;
   const receiveAmount = usdEquivalent - fee;
   const createdAt = daysAgo(Math.floor(Math.random() * 60));
@@ -54,7 +51,6 @@ for (let i = 0; i < 40; i++) {
     receiveCurrency: currency,
     fee,
     feeRate,
-    paymentMethod: method,
     bank,
     bankCode: "044",
     accountNumber: `0${Math.floor(Math.random() * 1_000_000_000).toString().padStart(9, "0")}`,

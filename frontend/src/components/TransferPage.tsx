@@ -242,7 +242,6 @@ export default function TransferPage() {
         sendAmount: parsedAmount,
         sendToken,
         receiveCurrency: currency,
-        paymentMethod: "standard",
         bank: selectedBank.name,
         bankCode: selectedBank.code,
         accountNumber,

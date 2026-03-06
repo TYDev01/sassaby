@@ -265,7 +265,6 @@ function TransferHistoryTable({
                 <th className="px-6 py-3 text-left font-medium">USD Value</th>
                 <th className="px-6 py-3 text-left font-medium">Receive</th>
                 <th className="px-6 py-3 text-left font-medium">Bank</th>
-                <th className="px-6 py-3 text-left font-medium">Method</th>
                 <th className="px-6 py-3 text-left font-medium">Fee</th>
                 <th className="px-6 py-3 text-left font-medium">Status</th>
               </tr>
@@ -305,9 +304,6 @@ function TransferHistoryTable({
                       {fmt(t.receiveAmount)} {t.receiveCurrency}
                     </td>
                     <td className="px-6 py-3.5 text-gray-400 text-xs">{t.bank}</td>
-                    <td className="px-6 py-3.5 text-gray-400 capitalize text-xs">
-                      {t.paymentMethod.replace("_", " ")}
-                    </td>
                     <td className="px-6 py-3.5 text-gray-500 text-xs">
                       ${fmt(t.fee)}
                       <br />

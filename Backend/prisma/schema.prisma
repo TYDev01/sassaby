@@ -19,7 +19,6 @@ model Transfer {
   receiveCurrency String
   fee             Float
   feeRate         Float
-  paymentMethod   String
   bank            String
   bankCode        String
   accountNumber   String

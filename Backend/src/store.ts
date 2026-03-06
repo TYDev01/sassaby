@@ -5,7 +5,6 @@ import { prisma } from "./lib/prisma";
 export type TransferStatus = "pending" | "processing" | "completed" | "failed";
 export type SendToken = "STX" | "USDCx" | "BTC";
 export type Currency = "NGN" | "GHS" | "KES";
-export type PaymentMethod = "instant" | "same_day" | "standard";
 
 export interface Transfer {
   id: string;
@@ -17,7 +16,6 @@ export interface Transfer {
   receiveCurrency: Currency;
   fee: number;
   feeRate: number;
-  paymentMethod: PaymentMethod;
   bank: string;
   bankCode: string;
   accountNumber: string;
@@ -39,7 +37,6 @@ function mapRow(row: any): Transfer {
     receiveCurrency: row.receiveCurrency as Currency,
     fee:             Number(row.fee),
     feeRate:         Number(row.feeRate),
-    paymentMethod:   row.paymentMethod as PaymentMethod,
     bank:            row.bank,
     bankCode:        row.bankCode,
     accountNumber:   row.accountNumber,
@@ -74,7 +71,6 @@ export async function addTransfer(transfer: Transfer): Promise<Transfer> {
       receiveCurrency: transfer.receiveCurrency,
       fee:             transfer.fee,
       feeRate:         transfer.feeRate,
-      paymentMethod:   transfer.paymentMethod,
       bank:            transfer.bank,
       bankCode:        transfer.bankCode,
       accountNumber:   transfer.accountNumber,
@@ -117,7 +113,6 @@ export interface AdminStats {
   avgTransactionUSD: number;
   volumeByToken: Record<SendToken, number>;
   volumeByCurrency: Record<Currency, number>;
-  volumeByMethod: Record<PaymentMethod, number>;
   recentTransfers: Transfer[];
 }
 
@@ -138,12 +133,10 @@ export async function getAdminStats(): Promise<AdminStats> {
 
   const volumeByToken: Record<SendToken, number>       = { STX: 0, USDCx: 0, BTC: 0 };
   const volumeByCurrency: Record<Currency, number>     = { NGN: 0, GHS: 0, KES: 0 };
-  const volumeByMethod: Record<PaymentMethod, number>  = { instant: 0, same_day: 0, standard: 0 };
 
   for (const t of all) {
-    volumeByToken[t.sendToken]       += t.usdEquivalent;
+    volumeByToken[t.sendToken]          += t.usdEquivalent;
     volumeByCurrency[t.receiveCurrency] += t.receiveAmount;
-    volumeByMethod[t.paymentMethod]  += t.usdEquivalent;
   }
 
   return {
@@ -157,7 +150,6 @@ export async function getAdminStats(): Promise<AdminStats> {
     avgTransactionUSD,
     volumeByToken,
     volumeByCurrency,
-    volumeByMethod,
     recentTransfers: all.slice(0, 10),
   };
 }

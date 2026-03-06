@@ -185,7 +185,9 @@ function MinimumLabel({
     const fmt = (n: number) =>
       n >= 1000
         ? n.toLocaleString("en-US", { maximumFractionDigits: 0 })
-        : n.toLocaleString("en-US", { maximumFractionDigits: 4 });
+        : n >= 1
+        ? n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        : n.toLocaleString("en-US", { minimumFractionDigits: 4, maximumFractionDigits: 4 });
     return (
       <p className="text-gray-500 text-xs mt-1.5">
         1 {rateInfo.token} ≈ ${fmt(rateInfo.tokenPrice)}

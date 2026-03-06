@@ -3,7 +3,6 @@
 export type TransferStatus = "pending" | "processing" | "completed" | "failed";
 export type SendToken = "STX" | "USDCx" | "BTC";
 export type Currency = "NGN" | "GHS" | "KES";
-export type PaymentMethod = "instant" | "same_day" | "standard";
 
 export interface Transfer {
   id: string;
@@ -15,7 +14,6 @@ export interface Transfer {
   receiveCurrency: Currency;
   fee: number;
   feeRate: number;
-  paymentMethod: PaymentMethod;
   bank: string;
   accountNumber: string;
   status: TransferStatus;
@@ -33,7 +31,6 @@ export interface AdminStats {
   avgTransactionUSD: number;
   volumeByToken: Record<SendToken, number>;
   volumeByCurrency: Record<Currency, number>;
-  volumeByMethod: Record<PaymentMethod, number>;
   recentTransfers: Transfer[];
 }
 
@@ -60,7 +57,6 @@ export async function createTransfer(payload: {
   sendAmount: number;
   sendToken: SendToken;
   receiveCurrency: Currency;
-  paymentMethod: PaymentMethod;
   bank: string;
   bankCode: string;
   accountNumber: string;
