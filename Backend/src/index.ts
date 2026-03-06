@@ -6,6 +6,7 @@ import transfersRouter from "./routes/transfers";
 import adminRouter from "./routes/admin";
 import flutterwaveRouter from "./routes/flutterwave";
 import ratesRouter from "./routes/rates";
+import depositAddressesRouter from "./routes/depositAddresses";
 
 dotenv.config();
 
@@ -33,6 +34,7 @@ app.use("/api/transfers", transfersRouter);
 app.use("/api/admin", adminRouter);
 app.use("/api/flutterwave", flutterwaveRouter);
 app.use("/api/rates", ratesRouter);
+app.use("/api/deposit-addresses", depositAddressesRouter);
 
 // ─── 404 handler ──────────────────────────────────────────────────────────────
 app.use((_req, res) => {
@@ -49,5 +51,7 @@ app.listen(PORT, () => {
   console.log(`   GET    /api/admin/stats        — admin dashboard stats`);
   console.log(`   GET    /api/flutterwave/banks  — list banks (cached 1h)`);
   console.log(`   POST   /api/flutterwave/verify-account — resolve account name`);
-  console.log(`   GET    /api/rates                — live token price + FLW rate\n`);
+  console.log(`   GET    /api/rates                — live token price + FLW rate`);
+  console.log(`   GET    /api/deposit-addresses   — get all deposit addresses`);
+  console.log(`   POST   /api/deposit-addresses   — upsert deposit address\n`);
 });

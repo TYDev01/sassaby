@@ -121,6 +121,45 @@ export async function updateRateConfig(patch: Partial<RateConfig>): Promise<Rate
   return res.json();
 }
 
+// ─── Deposit addresses (admin-managed) ───────────────────────────────────────
+
+export interface DepositAddress {
+  token: SendToken;
+  address: string;
+  label: string;
+  updatedAt: string;
+}
+
+export interface DepositAddressMap {
+  addresses: Record<SendToken, DepositAddress>;
+  list: Array<DepositAddress & { id: number }>;
+}
+
+export async function fetchDepositAddresses(): Promise<DepositAddressMap> {
+  const res = await fetch(`${BASE_URL}/api/deposit-addresses`, { cache: "no-store" });
+  if (!res.ok) throw new Error("Failed to fetch deposit addresses");
+  return res.json();
+}
+
+export async function upsertDepositAddress(
+  token: SendToken,
+  address: string,
+  label = ""
+): Promise<DepositAddress> {
+  const res = await fetch(`${BASE_URL}/api/deposit-addresses`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token, address, label }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? "Failed to save deposit address");
+  return data.depositAddress as DepositAddress;
+}
+
+export async function deleteDepositAddress(token: SendToken): Promise<void> {
+  await fetch(`${BASE_URL}/api/deposit-addresses/${token}`, { method: "DELETE" });
+}
+
 // ─── Flutterwave helpers ──────────────────────────────────────────────────────
 
 export interface FlwBank {

@@ -10,8 +10,11 @@ import ReceiveCard from "@/components/ReceiveCard";
 import BankSelector, { Bank } from "@/components/BankSelector";
 
 import { createTransfer, fetchRates, RateQuote } from "@/lib/api";
+import TransferModal from "@/components/TransferModal";
+import { toast } from "sonner";
 
 type Currency = "NGN" | "GHS" | "KES";
+
 
 
 
@@ -234,9 +237,19 @@ export default function TransferPage() {
 
   // ── Handlers ─────────────────────────────────────────────────────────────────
 
-  const handleSubmit = useCallback(async () => {
+  const [showModal, setShowModal] = useState(false);
+  const [isConfirming, setIsConfirming] = useState(false);
+
+  /** Step 1: open the modal showing where to send crypto */
+  const handleSubmit = useCallback(() => {
     if (!isReady || isLoading || !selectedBank) return;
-    setIsLoading(true);
+    setShowModal(true);
+  }, [isReady, isLoading, selectedBank]);
+
+  /** Step 2: user clicked "I've sent the crypto — Confirm" inside the modal */
+  const handleConfirm = useCallback(async () => {
+    if (!selectedBank) return;
+    setIsConfirming(true);
     try {
       const transfer = await createTransfer({
         sendAmount: parsedAmount,
@@ -247,17 +260,39 @@ export default function TransferPage() {
         accountNumber,
       });
       console.log("Transfer created:", transfer);
+      setShowModal(false);
+      toast.success("Transfer submitted!", {
+        description: `Your ${sendToken} transfer has been received and is being processed.`,
+      });
     } catch (err) {
       console.error("Transfer failed:", err);
+      toast.error("Transfer failed", {
+        description: "Could not submit your transfer. Please try again.",
+      });
     } finally {
-      setIsLoading(false);
+      setIsConfirming(false);
     }
-  }, [isReady, isLoading, parsedAmount, sendToken, currency, selectedBank, accountNumber]);
+  }, [parsedAmount, sendToken, currency, selectedBank, accountNumber]);
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
+  const feeUSD = rateQuote ? rateQuote.usdAmount * 0.015 : 0;
+
   return (
     <div className="min-h-screen bg-[#0a0a0a] flex flex-col">
+      {/* Transfer confirmation modal */}
+      <TransferModal
+        open={showModal}
+        onClose={() => setShowModal(false)}
+        onConfirm={handleConfirm}
+        isConfirming={isConfirming}
+        sendAmount={parsedAmount}
+        sendToken={sendToken}
+        receiveAmount={receiveAmount}
+        receiveCurrency={currency}
+        feeUSD={feeUSD}
+      />
+
       {/* Navigation */}
       <Navbar />
 

@@ -31,7 +31,8 @@ import {
 } from "recharts";
 import { toast } from "sonner";
 import Navbar from "@/components/Navbar";
-import { fetchAdminStats, AdminStats, Transfer, fetchRateConfig, updateRateConfig, RateConfig, RateMode } from "@/lib/api";
+import { fetchAdminStats, AdminStats, Transfer, fetchRateConfig, updateRateConfig, RateConfig, RateMode, fetchDepositAddresses, upsertDepositAddress, deleteDepositAddress, DepositAddress, SendToken } from "@/lib/api";
+import { MapPin, Trash2 } from "lucide-react";
 import { useWallet } from "@/lib/wallet";
 import AdminChainHistory from "@/components/AdminChainHistory";
 
@@ -566,6 +567,186 @@ function DashboardSkeleton() {
   );
 }
 
+// ─── Deposit Address Manager ──────────────────────────────────────────────────
+
+const DEPOSIT_TOKENS: Array<{ token: SendToken; label: string; icon: string; color: string }> = [
+  { token: "STX",   label: "Stacks (STX)",         icon: "⬡", color: "#f97316" },
+  { token: "USDCx", label: "USD Coin on Stacks",    icon: "◎", color: "#2775ca" },
+  { token: "BTC",   label: "Bitcoin (BTC)",         icon: "₿", color: "#f7931a" },
+];
+
+function DepositAddressManager() {
+  const [map, setMap] = useState<Record<string, DepositAddress>>({});
+  const [drafts, setDrafts] = useState<Record<string, { address: string; label: string }>>({});
+  const [saving, setSaving] = useState<Record<string, boolean>>({});
+  const [deleting, setDeleting] = useState<Record<string, boolean>>({});
+  const [savedFlag, setSavedFlag] = useState<Record<string, boolean>>({});
+  const [loadingInit, setLoadingInit] = useState(true);
+
+  // ── Load existing addresses ──────────────────────────────────────────────
+  useEffect(() => {
+    fetchDepositAddresses()
+      .then((data) => {
+        setMap(data.addresses as Record<string, DepositAddress>);
+        const d: Record<string, { address: string; label: string }> = {};
+        for (const t of DEPOSIT_TOKENS) {
+          const existing = (data.addresses as Record<string, DepositAddress>)[t.token];
+          d[t.token] = { address: existing?.address ?? "", label: existing?.label ?? "" };
+        }
+        setDrafts(d);
+      })
+      .catch(() => {})
+      .finally(() => setLoadingInit(false));
+  }, []);
+
+  async function handleSave(token: SendToken) {
+    const draft = drafts[token];
+    if (!draft?.address.trim()) { toast.error("Enter a deposit address"); return; }
+    setSaving((s) => ({ ...s, [token]: true }));
+    try {
+      const saved = await upsertDepositAddress(token, draft.address.trim(), draft.label.trim());
+      setMap((m) => ({ ...m, [token]: saved }));
+      setSavedFlag((s) => ({ ...s, [token]: true }));
+      setTimeout(() => setSavedFlag((s) => ({ ...s, [token]: false })), 2000);
+      toast.success(`${token} deposit address saved`);
+    } catch {
+      toast.error(`Failed to save ${token} address`);
+    } finally {
+      setSaving((s) => ({ ...s, [token]: false }));
+    }
+  }
+
+  async function handleDelete(token: SendToken) {
+    setDeleting((s) => ({ ...s, [token]: true }));
+    try {
+      await deleteDepositAddress(token);
+      setMap((m) => { const n = { ...m }; delete n[token]; return n; });
+      setDrafts((d) => ({ ...d, [token]: { address: "", label: "" } }));
+      toast.success(`${token} deposit address removed`);
+    } catch {
+      toast.error(`Failed to remove ${token} address`);
+    } finally {
+      setDeleting((s) => ({ ...s, [token]: false }));
+    }
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.5, duration: 0.45 }}
+      className="bg-[#111111] border border-white/[0.07] rounded-2xl overflow-hidden"
+    >
+      <div className="px-6 py-4 border-b border-white/[0.07] flex items-center gap-2">
+        <MapPin size={16} className="text-[#f97316]" />
+        <h2 className="text-white font-semibold text-sm">Deposit Address Manager</h2>
+        <span className="ml-auto text-[11px] text-gray-500 font-medium uppercase tracking-wider">
+          Per-token receive addresses
+        </span>
+      </div>
+
+      {loadingInit ? (
+        <div className="px-6 py-10 flex items-center justify-center gap-2 text-gray-500 text-sm">
+          <Loader2 size={16} className="animate-spin" />
+          Loading addresses…
+        </div>
+      ) : (
+        <div className="divide-y divide-white/[0.05]">
+          {DEPOSIT_TOKENS.map(({ token, label, icon, color }) => {
+            const existing = map[token];
+            const draft = drafts[token] ?? { address: "", label: "" };
+            const isSaving  = saving[token];
+            const isDeleting = deleting[token];
+            const isSaved   = savedFlag[token];
+            const hasExisting = !!existing?.address;
+
+            return (
+              <div key={token} className="px-6 py-5 flex flex-col gap-3">
+                {/* Token label */}
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl" style={{ color }}>{icon}</span>
+                  <div>
+                    <p className="text-white text-sm font-semibold">{token}</p>
+                    <p className="text-gray-500 text-xs">{label}</p>
+                  </div>
+                  {hasExisting && (
+                    <span className="ml-auto inline-flex items-center gap-1 text-[11px] text-emerald-400 bg-emerald-400/10 border border-emerald-400/20 rounded-full px-2.5 py-0.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                      Active
+                    </span>
+                  )}
+                </div>
+
+                {/* Address input */}
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    type="text"
+                    value={draft.address}
+                    onChange={(e) =>
+                      setDrafts((d) => ({ ...d, [token]: { ...d[token], address: e.target.value } }))
+                    }
+                    placeholder={`${token} deposit address…`}
+                    className="flex-1 bg-[#1a1a1a] border border-white/[0.08] rounded-lg px-4 py-2.5 text-sm text-white font-mono placeholder:text-gray-600 focus:outline-none focus:border-white/20 transition-colors"
+                  />
+                  <input
+                    type="text"
+                    value={draft.label}
+                    onChange={(e) =>
+                      setDrafts((d) => ({ ...d, [token]: { ...d[token], label: e.target.value } }))
+                    }
+                    placeholder="Label (optional)"
+                    className="w-full sm:w-44 bg-[#1a1a1a] border border-white/[0.08] rounded-lg px-4 py-2.5 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-white/20 transition-colors"
+                  />
+                </div>
+
+                {/* Action buttons */}
+                <div className="flex items-center gap-2">
+                  <motion.button
+                    whileTap={{ scale: 0.96 }}
+                    onClick={() => handleSave(token)}
+                    disabled={isSaving || !draft.address.trim()}
+                    className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${
+                      isSaved
+                        ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                        : "bg-[#6366f1]/20 text-[#818cf8] border border-[#6366f1]/30 hover:bg-[#6366f1]/30"
+                    } disabled:opacity-40 disabled:cursor-not-allowed`}
+                  >
+                    {isSaving ? (
+                      <Loader2 size={13} className="animate-spin" />
+                    ) : isSaved ? (
+                      "Saved ✓"
+                    ) : (
+                      "Save Address"
+                    )}
+                  </motion.button>
+
+                  {hasExisting && (
+                    <motion.button
+                      whileTap={{ scale: 0.96 }}
+                      onClick={() => handleDelete(token)}
+                      disabled={isDeleting}
+                      className="px-4 py-2 rounded-lg text-xs font-semibold bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-all duration-200 cursor-pointer flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      {isDeleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                      Remove
+                    </motion.button>
+                  )}
+
+                  {hasExisting && (
+                    <p className="ml-auto text-[11px] text-gray-600 font-mono truncate max-w-[200px]">
+                      {existing.address.slice(0, 10)}…{existing.address.slice(-6)}
+                    </p>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </motion.div>
+  );
+}
+
 // ─── Admin Dashboard ──────────────────────────────────────────────────────────
 
 export default function AdminDashboard() {
@@ -796,6 +977,8 @@ export default function AdminDashboard() {
             </div>
             {/* ── Rate Manager ───────────────────────────────────────────── */}
             <RateManager />
+            {/* ── Deposit Address Manager ────────────────────────────────── */}
+            <DepositAddressManager />
             {/* ── Recent Transfers Table ─────────────────────────────────────── */}
             <RecentTransfersTable transfers={stats.recentTransfers} />
             </div>
