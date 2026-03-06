@@ -68,6 +68,9 @@ async function getAccessToken(): Promise<string> {
 
 const SUPPORTED_CURRENCIES = ["NGN", "GHS", "KES"] as const;
 
+// ─── Platform fee (must match transfers.ts) ────────────────────────────────────
+const FEE_RATE = 0.015; // 1.5%
+
 // ─── Admin rate config (PostgreSQL-backed) ─────────────────────────────────────────
 
 export type RateMode = "api" | "manual";
@@ -231,7 +234,8 @@ router.get("/", async (req: Request, res: ExpressResponse) => {
     ]);
 
     const usdAmount = parsedAmount * tokenPriceUSD;
-    const receiveAmount = usdAmount * flwRate;
+    const fee = usdAmount * FEE_RATE;
+    const receiveAmount = (usdAmount - fee) * flwRate;
 
     // Read mode from DB to annotate the response
     const configRow = await prisma.rateConfig.findUnique({ where: { currency } }).catch(() => null);
