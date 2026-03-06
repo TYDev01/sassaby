@@ -19,6 +19,7 @@ import {
   Sliders,
   Wifi,
   WifiOff,
+  History,
 } from "lucide-react";
 import {
   BarChart,
@@ -36,6 +37,7 @@ import { toast } from "sonner";
 import Navbar from "@/components/Navbar";
 import { fetchAdminStats, AdminStats, Transfer, fetchRateConfig, updateRateConfig, RateConfig, RateMode } from "@/lib/api";
 import { useWallet } from "@/lib/wallet";
+import AdminChainHistory from "@/components/AdminChainHistory";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -635,6 +637,7 @@ export default function AdminDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [tab, setTab] = useState<"overview" | "history">("overview");
 
   // Derive auth state
   const isAuthorised = connected && addresses?.stx === ADMIN_ADDRESS;
@@ -708,45 +711,73 @@ export default function AdminDashboard() {
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
-          className="flex items-start justify-between mb-8"
+          className="flex items-start justify-between mb-6"
         >
           <div>
             <h1 className="text-3xl font-bold text-white tracking-tight">Admin Dashboard</h1>
             <p className="text-gray-500 text-sm mt-1">
-              {lastUpdated
-                ? `Last updated ${lastUpdated.toLocaleTimeString()}`
-                : "Real-time transfer metrics"}
+              {tab === "overview"
+                ? lastUpdated
+                  ? `Last updated ${lastUpdated.toLocaleTimeString()}`
+                  : "Real-time transfer metrics"
+                : "Incoming on-chain transactions to the platform address"}
             </p>
           </div>
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={() => load(true)}
-            disabled={refreshing}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/[0.06] border border-white/10 text-gray-300 text-sm hover:text-white hover:bg-white/[0.1] transition-all duration-200 cursor-pointer"
-          >
-            <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
-            Refresh
-          </motion.button>
+          {tab === "overview" && (
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => load(true)}
+              disabled={refreshing}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/[0.06] border border-white/10 text-gray-300 text-sm hover:text-white hover:bg-white/[0.1] transition-all duration-200 cursor-pointer"
+            >
+              <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
+              Refresh
+            </motion.button>
+          )}
         </motion.div>
 
-        {/* Error */}
-        <AnimatePresence>
-          {error && (
-            <motion.div
-              initial={{ opacity: 0, y: -8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              className="mb-6 px-5 py-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm flex items-center gap-2"
+        {/* Tab navigation */}
+        <div className="flex items-center gap-0 mb-8 border-b border-white/[0.06]">
+          {(["overview", "history"] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 -mb-px transition-all duration-200 cursor-pointer capitalize ${
+                tab === t
+                  ? "border-[#f97316] text-white"
+                  : "border-transparent text-gray-500 hover:text-gray-300"
+              }`}
             >
-              <XCircle size={16} />
-              {error}
-            </motion.div>
-          )}
-        </AnimatePresence>
+              {t === "overview" ? (
+                <BarChart3 size={14} />
+              ) : (
+                <History size={14} />
+              )}
+              {t.charAt(0).toUpperCase() + t.slice(1)}
+            </button>
+          ))}
+        </div>
 
-        {loading ? (
-          <DashboardSkeleton />
+        {tab === "overview" && (
+          <>
+            {/* Error */}
+            <AnimatePresence>
+              {error && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  className="mb-6 px-5 py-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm flex items-center gap-2"
+                >
+                  <XCircle size={16} />
+                  {error}
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {loading ? (
+              <DashboardSkeleton />
         ) : stats ? (
           <div className="flex flex-col gap-8">
             {/* ── Primary KPI Cards ─────────────────────────────────────────── */}
@@ -830,8 +861,14 @@ export default function AdminDashboard() {
             <RateManager />
             {/* ── Recent Transfers Table ─────────────────────────────────────── */}
             <RecentTransfersTable transfers={stats.recentTransfers} />
-          </div>
-        ) : null}
+            </div>
+          ) : null}
+          </>
+        )}
+
+        {tab === "history" && (
+          <AdminChainHistory btcAddress={addresses?.btc ?? undefined} />
+        )}
       </main>
     </div>
   );

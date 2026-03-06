@@ -13,25 +13,7 @@ import { createTransfer, fetchRates, RateQuote } from "@/lib/api";
 
 type Currency = "NGN" | "GHS" | "KES";
 
-// ─── Available Balance ─────────────────────────────────────────────────────────
 
-function AvailableBalance() {
-  const stxBalance = 12450.567;
-
-  return (
-    <motion.p
-      initial={{ opacity: 0, y: 6 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.3, duration: 0.4 }}
-      className="text-sm text-gray-400 mt-2"
-    >
-      Available Balance:{" "}
-      <span className="text-white font-semibold">
-        {stxBalance.toLocaleString("en-US", { minimumFractionDigits: 3 })} STX
-      </span>
-    </motion.p>
-  );
-}
 
 // ─── Hero Heading ─────────────────────────────────────────────────────────────
 
@@ -83,7 +65,6 @@ function HeroHeading() {
         </span>{" "}
         accounts
       </h1>
-      <AvailableBalance />
     </motion.div>
   );
 }
