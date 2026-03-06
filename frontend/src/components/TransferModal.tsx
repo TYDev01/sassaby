@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import dynamic from "next/dynamic";
 import { motion, AnimatePresence } from "framer-motion";
-import QRCode from "react-qr-code";
 import { Copy, Check, X, Loader2, AlertCircle, SendHorizonal } from "lucide-react";
 import { SendToken, fetchDepositAddresses, DepositAddress } from "@/lib/api";
+
+const QRCode = dynamic(() => import("react-qr-code"), { ssr: false });
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 

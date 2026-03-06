@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useState, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -569,10 +570,10 @@ function DashboardSkeleton() {
 
 // ─── Deposit Address Manager ──────────────────────────────────────────────────
 
-const DEPOSIT_TOKENS: Array<{ token: SendToken; label: string; icon: string; color: string }> = [
-  { token: "STX",   label: "Stacks (STX)",         icon: "⬡", color: "#f97316" },
-  { token: "USDCx", label: "USD Coin on Stacks",    icon: "◎", color: "#2775ca" },
-  { token: "BTC",   label: "Bitcoin (BTC)",         icon: "₿", color: "#f7931a" },
+const DEPOSIT_TOKENS: Array<{ token: SendToken; label: string; imgSrc: string }> = [
+  { token: "STX",   label: "Stacks (STX)",       imgSrc: "/stx.png"   },
+  { token: "USDCx", label: "USD Coin on Stacks",  imgSrc: "/usdcx.png" },
+  { token: "BTC",   label: "Bitcoin (BTC)",       imgSrc: "/btc.png"   },
 ];
 
 function DepositAddressManager() {
@@ -652,7 +653,7 @@ function DepositAddressManager() {
         </div>
       ) : (
         <div className="divide-y divide-white/[0.05]">
-          {DEPOSIT_TOKENS.map(({ token, label, icon, color }) => {
+          {DEPOSIT_TOKENS.map(({ token, label, imgSrc }) => {
             const existing = map[token];
             const draft = drafts[token] ?? { address: "", label: "" };
             const isSaving  = saving[token];
@@ -664,7 +665,7 @@ function DepositAddressManager() {
               <div key={token} className="px-6 py-5 flex flex-col gap-3">
                 {/* Token label */}
                 <div className="flex items-center gap-3">
-                  <span className="text-2xl" style={{ color }}>{icon}</span>
+                  <Image src={imgSrc} alt={token} width={32} height={32} className="rounded-full" />
                   <div>
                     <p className="text-white text-sm font-semibold">{token}</p>
                     <p className="text-gray-500 text-xs">{label}</p>
