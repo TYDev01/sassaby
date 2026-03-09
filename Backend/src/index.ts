@@ -42,7 +42,7 @@ app.use((_req, res) => {
 });
 
 // ─── Start ────────────────────────────────────────────────────────────────────
-app.listen(Number(PORT), "0.0.0.0"er(PORT), "0.0.0.0", () => {
+app.listen(Number(PORT), "0.0.0.0", () => {
   console.log(`\n Sassaby backend running on http://localhost:${PORT}`);
   console.log(`   POST   /api/transfers          — create transfer`);
   console.log(`   GET    /api/transfers          — list all transfers`);
