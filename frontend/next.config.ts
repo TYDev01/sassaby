@@ -1,8 +1,6 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Silence the "webpack config without turbopack config" warning in dev
-  turbopack: {},
   webpack: (config, { webpack }) => {
     // @stacks/connect ships with SES (lockdown) which freezes JS intrinsics and
     // breaks webpack's module system in production builds. Replace the lockdown
