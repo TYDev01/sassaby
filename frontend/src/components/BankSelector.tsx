@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ChevronDown,
@@ -10,6 +11,7 @@ import {
   CheckCircle2,
   AlertCircle,
   RefreshCw,
+  X,
 } from "lucide-react";
 import { fetchBanks, verifyAccount, FlwBank } from "@/lib/api";
 
@@ -71,7 +73,7 @@ function BankOption({
   );
 }
 
-// ─── Bank Dropdown ────────────────────────────────────────────────────────────
+// ─── Bank Dropdown (modal) ────────────────────────────────────────────────────
 
 function BankDropdown({
   selected,
@@ -90,18 +92,18 @@ function BankDropdown({
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const ref = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
+  // Lock body scroll while modal is open
   useEffect(() => {
-    function handle(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-        setQuery("");
-      }
+    if (open) {
+      document.body.style.overflow = "hidden";
+      setTimeout(() => inputRef.current?.focus(), 50);
+    } else {
+      document.body.style.overflow = "";
     }
-    document.addEventListener("mousedown", handle);
-    return () => document.removeEventListener("mousedown", handle);
-  }, []);
+    return () => { document.body.style.overflow = ""; };
+  }, [open]);
 
   const filtered = banks.filter(
     (b) =>
@@ -115,13 +117,113 @@ function BankDropdown({
     setQuery("");
   }
 
+  function handleClose() {
+    setOpen(false);
+    setQuery("");
+  }
+
+  const modal = (
+    <AnimatePresence>
+      {open && (
+        <>
+          {/* Backdrop */}
+          <motion.div
+            key="backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.06 }}
+            onClick={handleClose}
+            className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm"
+          />
+
+          {/* Modal panel */}
+          <motion.div
+            key="modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Choose a bank"
+            initial={{ opacity: 0, scale: 0.97, y: 12 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.97, y: 12 }}
+            transition={{ duration: 0.1, ease: "easeOut" }}
+            className="
+              fixed z-50 inset-x-4 top-1/2 -translate-y-1/2
+              sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 sm:w-[420px]
+              bg-[#161616] border border-white/[0.08] border-t-[#f97316]
+              rounded-2xl shadow-2xl overflow-hidden
+              flex flex-col max-h-[70vh]
+            "
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.06]">
+              <span className="text-sm font-semibold text-white">Choose Bank</span>
+              <button
+                onClick={handleClose}
+                aria-label="Close"
+                className="text-gray-500 hover:text-white transition-colors cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Search */}
+            <div className="flex items-center gap-2 px-4 py-2.5 border-b border-white/[0.06]">
+              <Search size={14} className="text-gray-500 shrink-0" />
+              <input
+                ref={inputRef}
+                type="text"
+                placeholder="Search bank name or code…"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                className="flex-1 bg-transparent text-sm text-white placeholder:text-gray-600 focus:outline-none"
+              />
+              {query && (
+                <button onClick={() => setQuery("")} className="text-gray-600 hover:text-gray-400 cursor-pointer">
+                  <X size={13} />
+                </button>
+              )}
+            </div>
+
+            {/* Bank list */}
+            <div className="overflow-y-auto flex-1 p-2">
+              {loadError ? (
+                <div className="flex flex-col items-center gap-2 py-8 text-center">
+                  <AlertCircle size={20} className="text-red-400" />
+                  <p className="text-red-400 text-xs">{loadError}</p>
+                  <button
+                    onClick={() => { onRetry(); handleClose(); }}
+                    className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-white mt-1 cursor-pointer"
+                  >
+                    <RefreshCw size={12} /> Retry
+                  </button>
+                </div>
+              ) : filtered.length === 0 ? (
+                <p className="text-center text-gray-500 text-sm py-8">No banks found</p>
+              ) : (
+                filtered.map((bank) => (
+                  <BankOption
+                    key={bank.id}
+                    bank={bank}
+                    isSelected={selected?.id === bank.id}
+                    onClick={() => handleSelect(bank)}
+                  />
+                ))
+              )}
+            </div>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
+  );
+
   return (
-    <div ref={ref} className="relative w-full">
+    <div className="relative w-full">
       {/* Trigger */}
       <motion.button
         whileTap={{ scale: 0.99 }}
-        onClick={() => !loading && setOpen((prev) => !prev)}
-        aria-haspopup="listbox"
+        onClick={() => !loading && setOpen(true)}
+        aria-haspopup="dialog"
         aria-expanded={open}
         aria-label="Choose bank"
         disabled={loading}
@@ -140,73 +242,12 @@ function BankDropdown({
         {loading ? (
           <Loader2 size={15} className="text-gray-500 animate-spin" />
         ) : (
-          <ChevronDown
-            size={16}
-            className={`text-gray-500 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
-          />
+          <ChevronDown size={16} className="text-gray-500" />
         )}
       </motion.button>
 
-      {/* Panel */}
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            role="listbox"
-            aria-label="Bank list"
-            initial={{ opacity: 0, y: 6, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 6, scale: 0.98 }}
-            transition={{ duration: 0.18 }}
-            className="
-              absolute left-0 right-0 top-full mt-2 z-50
-              bg-[#161616] border border-white/[0.08]
-              rounded-xl shadow-2xl overflow-hidden
-            "
-          >
-            {/* Search */}
-            <div className="flex items-center gap-2 px-3 py-2 border-b border-white/[0.06]">
-              <Search size={14} className="text-gray-500 shrink-0" />
-              <input
-                autoFocus
-                type="text"
-                placeholder="Search bank name or code…"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                className="flex-1 bg-transparent text-sm text-white placeholder:text-gray-600 focus:outline-none"
-              />
-            </div>
-
-            {/* Error state */}
-            {loadError ? (
-              <div className="flex flex-col items-center gap-2 py-6 px-4 text-center">
-                <AlertCircle size={20} className="text-red-400" />
-                <p className="text-red-400 text-xs">{loadError}</p>
-                <button
-                  onClick={() => { onRetry(); setOpen(false); }}
-                  className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-white mt-1 cursor-pointer"
-                >
-                  <RefreshCw size={12} /> Retry
-                </button>
-              </div>
-            ) : (
-              <div className="max-h-56 overflow-y-auto p-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/10">
-                {filtered.length === 0 ? (
-                  <p className="text-center text-gray-500 text-sm py-4">No banks found</p>
-                ) : (
-                  filtered.map((bank) => (
-                    <BankOption
-                      key={bank.id}
-                      bank={bank}
-                      isSelected={selected?.id === bank.id}
-                      onClick={() => handleSelect(bank)}
-                    />
-                  ))
-                )}
-              </div>
-            )}
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Portal modal */}
+      {typeof window !== "undefined" && createPortal(modal, document.body)}
     </div>
   );
 }
