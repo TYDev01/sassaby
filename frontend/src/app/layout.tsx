@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Stacks Bridge",
+  title: "Sassaby",
   description: "Bridge between Crypto and local bank accounts",
   other: {
     "talentapp:project_verification":
