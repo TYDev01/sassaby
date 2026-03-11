@@ -1,5 +1,6 @@
 import { Router, Request, Response as ExpressResponse } from "express";
 import { v4 as uuidv4 } from "uuid";
+import { adminAuth } from "../middleware/adminAuth";
 
 const router = Router();
 
@@ -100,8 +101,11 @@ const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 // ─── GET /api/flutterwave/banks?country=NG ────────────────────────────────────
 
+const ALLOWED_COUNTRIES = new Set(["NG", "GH", "KE"]);
+
 router.get("/banks", async (req: Request, res: ExpressResponse) => {
-  const country = ((req.query.country as string) || "NG").toUpperCase();
+  const rawCountry = ((req.query.country as string) || "NG").toUpperCase();
+  const country = ALLOWED_COUNTRIES.has(rawCountry) ? rawCountry : "NG";
 
   // Serve from cache if still fresh
   const cached = bankCache[country];
@@ -284,7 +288,7 @@ export async function callFlwTransfer(params: {
   };
 }
 
-router.post("/transfer", async (req: Request, res: ExpressResponse) => {
+router.post("/transfer", adminAuth, async (req: Request, res: ExpressResponse) => {
   const { account_number, account_bank, amount, currency, narration } = req.body as {
     account_number?: string;
     account_bank?: string;
@@ -302,8 +306,7 @@ router.post("/transfer", async (req: Request, res: ExpressResponse) => {
     return res.status(201).json(result);
   } catch (err) {
     console.error("[FLW] transfer route threw:", err);
-    const msg = err instanceof Error ? err.message : "Internal server error during transfer.";
-    return res.status(500).json({ error: msg });
+    return res.status(500).json({ error: "Failed to initiate transfer. Please try again." });
   }
 });
 

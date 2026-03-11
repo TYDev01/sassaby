@@ -9,8 +9,13 @@ import {
   SendToken,
   Currency,
 } from "../store";
-import { getTokenPriceUSD } from "./rates";
+import { getTokenPriceUSD, getFlwRate } from "./rates";
 import { prisma } from "../lib/prisma";
+
+const VALID_TOKENS: SendToken[]   = ["STX", "USDCx", "BTC"];
+const VALID_CURRENCIES: Currency[] = ["NGN", "GHS", "KES"];
+/** Maximum send amount per-transfer (crypto units) — guard against fat-finger or abuse */
+const MAX_SEND_AMOUNT = 1_000_000;
 
 const router = Router();
 
@@ -43,16 +48,27 @@ router.post("/", async (req: Request, res: Response) => {
     senderAddress?: string;
   };
 
-  // Validation
-  if (
-    !sendAmount ||
-    !sendToken ||
-    !receiveCurrency ||
-    !bank ||
-    !bankCode ||
-    !accountNumber
-  ) {
+  // ── Presence check ────────────────────────────────────────────────────────
+  if (!sendAmount || !sendToken || !receiveCurrency || !bank || !bankCode || !accountNumber) {
     return res.status(400).json({ error: "Missing required fields." });
+  }
+
+  // ── Enum validation ───────────────────────────────────────────────────────
+  if (!VALID_TOKENS.includes(sendToken as SendToken)) {
+    return res.status(400).json({ error: `sendToken must be one of: ${VALID_TOKENS.join(", ")}.` });
+  }
+  if (!VALID_CURRENCIES.includes(receiveCurrency as Currency)) {
+    return res.status(400).json({ error: `receiveCurrency must be one of: ${VALID_CURRENCIES.join(", ")}.` });
+  }
+
+  // ── Numeric bounds ────────────────────────────────────────────────────────
+  if (typeof sendAmount !== "number" || sendAmount <= 0 || sendAmount > MAX_SEND_AMOUNT) {
+    return res.status(400).json({ error: `sendAmount must be a positive number no greater than ${MAX_SEND_AMOUNT}.` });
+  }
+
+  // ── String length guards ──────────────────────────────────────────────────
+  if (accountNumber.length > 20 || bank.length > 100 || bankCode.length > 20) {
+    return res.status(400).json({ error: "One or more fields exceed the maximum allowed length." });
   }
 
   // Look up the admin deposit address for this token so the chain monitor
@@ -67,19 +83,25 @@ router.post("/", async (req: Request, res: Response) => {
   }
   const depositAddress = depositRow.address;
 
-  let usdEquivalent: number;
+  let usdEquivalent = 0;
+  let fee = 0;
+  let receiveAmount = 0;
   try {
-    const tokenPrice = await getTokenPriceUSD(sendToken);
+    const [tokenPrice, { rate: flwRate }] = await Promise.all([
+      getTokenPriceUSD(sendToken),
+      getFlwRate(receiveCurrency),
+    ]);
     usdEquivalent = sendAmount * tokenPrice;
+    fee = usdEquivalent * FEE_RATE;
+    // Store the actual fiat payout amount so the chain monitor can pass it
+    // directly to Flutterwave without a second rate lookup.
+    receiveAmount = (usdEquivalent - fee) * flwRate;
   } catch (err) {
-    console.error("[TRANSFERS] Failed to fetch token price:", err);
+    console.error("[TRANSFERS] Failed to fetch live rates:", err);
     return res
       .status(502)
-      .json({ error: "Could not fetch live token price. Please try again." });
+      .json({ error: "Could not fetch live rates. Please try again." });
   }
-
-  const fee = usdEquivalent * FEE_RATE;
-  const receiveAmount = usdEquivalent - fee;
 
   const transfer: Transfer = {
     id: uuidv4(),
@@ -109,7 +131,17 @@ router.post("/", async (req: Request, res: Response) => {
       `at ${depositAddress} for ${sendAmount} ${sendToken}`
   );
 
-  return res.status(201).json({ success: true, transfer });
+  // Do NOT return accountNumber or full banking PII in the response.
+  return res.status(201).json({
+    success: true,
+    id: transfer.id,
+    status: transfer.status,
+    depositAddress: transfer.depositAddress,
+    sendAmount: transfer.sendAmount,
+    sendToken: transfer.sendToken,
+    receiveAmount: transfer.receiveAmount,
+    receiveCurrency: transfer.receiveCurrency,
+  });
 });
 
 // ─── GET /api/transfers — list all transfers ──────────────────────────────────
