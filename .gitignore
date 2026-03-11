@@ -1,0 +1,8 @@
+# Root-level gitignore — ensures .env files are never committed even if
+# sub-directory .gitignore files are somehow bypassed.
+
+**/.env
+**/.env.local
+**/.env.*.local
+**/node_modules/
+.DS_Store

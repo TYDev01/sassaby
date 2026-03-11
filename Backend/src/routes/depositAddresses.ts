@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { prisma } from "../lib/prisma";
+import { adminAuth } from "../middleware/adminAuth";
 
 const router = Router();
 
@@ -30,10 +31,9 @@ router.get("/", async (_req, res) => {
 });
 
 // ─── POST /api/deposit-addresses ─────────────────────────────────────────────
-// Upsert a deposit address for a given token. Admin-only (auth enforced by
-// the caller knowing the admin key — in production add middleware).
+// Upsert a deposit address for a given token. Admin-only.
 
-router.post("/", async (req, res) => {
+router.post("/", adminAuth, async (req, res) => {
   const { token, address, label = "" } = req.body as {
     token: Token;
     address: string;
@@ -65,7 +65,7 @@ router.post("/", async (req, res) => {
 // ─── DELETE /api/deposit-addresses/:token ────────────────────────────────────
 // Remove a deposit address for a token.
 
-router.delete("/:token", async (req, res) => {
+router.delete("/:token", adminAuth, async (req, res) => {
   const { token } = req.params;
   if (!VALID_TOKENS.includes(token as Token)) {
     res.status(400).json({ error: `token must be one of ${VALID_TOKENS.join(", ")}` });

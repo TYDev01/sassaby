@@ -1,6 +1,7 @@
 import { Router, Request, Response as ExpressResponse } from "express";
 import axios from "axios";
 import { prisma } from "../lib/prisma";
+import { adminAuth } from "../middleware/adminAuth";
 
 const router = Router();
 
@@ -112,7 +113,7 @@ router.get("/config", async (_req, res: ExpressResponse) => {
 });
 
 // POST /api/rates/config
-router.post("/config", async (req, res: ExpressResponse) => {
+router.post("/config", adminAuth, async (req, res: ExpressResponse) => {
   const { modes, manualRates } = req.body as Partial<RateConfig>;
 
   const updates: Promise<unknown>[] = [];
@@ -165,7 +166,7 @@ router.post("/config", async (req, res: ExpressResponse) => {
 interface FlwRateEntry { rate: number; expiresAt: number; }
 const flwRateCache: Record<string, FlwRateEntry> = {};
 
-async function getFlwRate(destCurrency: string): Promise<{ rate: number }> {
+export async function getFlwRate(destCurrency: string): Promise<{ rate: number }> {
   // ── Check admin config in DB ──────────────────────────────────────────────
   try {
     const row = await prisma.rateConfig.findUnique({ where: { currency: destCurrency } });
