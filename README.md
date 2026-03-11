@@ -19,7 +19,6 @@ A crypto off-ramp platform that bridges Stacks assets (STX, USDCx, BTC) to local
 - **Admin dashboard** — protected route for managing rates, transfer history, and deposit addresses
 - **Flutterwave payouts** — bank transfers powered by Flutterwave
 - **Fully responsive** — mobile-first UI with dark theme
-
 ---
 
 ## Tech Stack

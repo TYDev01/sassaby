@@ -13,6 +13,7 @@ const FLW_IDP =
 const COINGECKO_IDS: Record<string, string> = {
   STX: "blockstack",
   BTC: "bitcoin",
+  USDCx: "usd-coin",  // Bridged USDC on Stacks — tracks USDC 1:1
 };
 
 // ─── Token price cache (60s TTL) ─────────────────────────────────────────────
@@ -21,7 +22,6 @@ interface PriceEntry { priceUsd: number; expiresAt: number; }
 const priceCache: Record<string, PriceEntry> = {};
 
 export async function getTokenPriceUSD(token: string): Promise<number> {
-  if (token === "USDCx") return 1.0;
   const geckoId = COINGECKO_IDS[token];
   if (!geckoId) throw new Error(`Unsupported token: ${token}`);
 

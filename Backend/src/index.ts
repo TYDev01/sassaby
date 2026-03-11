@@ -7,6 +7,7 @@ import adminRouter from "./routes/admin";
 import flutterwaveRouter from "./routes/flutterwave";
 import ratesRouter from "./routes/rates";
 import depositAddressesRouter from "./routes/depositAddresses";
+import { startChainMonitor } from "./lib/chainMonitor";
 
 dotenv.config();
 
@@ -54,4 +55,7 @@ app.listen(Number(PORT), "0.0.0.0", () => {
   console.log(`   GET    /api/rates                — live token price + FLW rate`);
   console.log(`   GET    /api/deposit-addresses   — get all deposit addresses`);
   console.log(`   POST   /api/deposit-addresses   — upsert deposit address\n`);
+
+  // Start the on-chain deposit monitor (polls Stacks + BTC APIs every 20s)
+  startChainMonitor();
 });

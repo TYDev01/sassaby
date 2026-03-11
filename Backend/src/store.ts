@@ -19,6 +19,9 @@ export interface Transfer {
   bank: string;
   bankCode: string;
   accountNumber: string;
+  senderAddress: string;
+  depositAddress: string;
+  claimedTxId: string;   // on-chain txId that triggered the payout; empty until matched
   status: TransferStatus;
   completedAt?: string;
 }
@@ -40,6 +43,9 @@ function mapRow(row: any): Transfer {
     bank:            row.bank,
     bankCode:        row.bankCode,
     accountNumber:   row.accountNumber,
+    senderAddress:   row.senderAddress ?? "",
+    depositAddress:  row.depositAddress ?? "",
+    claimedTxId:     row.claimedTxId ?? "",
     status:          row.status as TransferStatus,
     completedAt:     row.completedAt instanceof Date
       ? row.completedAt.toISOString()
@@ -74,6 +80,9 @@ export async function addTransfer(transfer: Transfer): Promise<Transfer> {
       bank:            transfer.bank,
       bankCode:        transfer.bankCode,
       accountNumber:   transfer.accountNumber,
+      senderAddress:   transfer.senderAddress,
+      depositAddress:  transfer.depositAddress,
+      claimedTxId:     transfer.claimedTxId ?? "",
       status:          transfer.status,
       completedAt:     transfer.completedAt ? new Date(transfer.completedAt) : null,
     },
@@ -93,6 +102,27 @@ export async function updateTransferStatus(
         status,
         ...(completedAt ? { completedAt: new Date(completedAt) } : {}),
       },
+    });
+    return mapRow(row);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Atomically claim an on-chain txId for a transfer and advance its status to
+ * "processing".  Returns null if the transfer no longer exists.
+ * Call this BEFORE firing the Flutterwave payout so the txId is persisted even
+ * if the payout call subsequently fails.
+ */
+export async function claimTransferTxId(
+  id: string,
+  txId: string
+): Promise<Transfer | null> {
+  try {
+    const row = await prisma.transfer.update({
+      where: { id },
+      data: { claimedTxId: txId, status: "processing" },
     });
     return mapRow(row);
   } catch {

@@ -60,6 +60,8 @@ export async function createTransfer(payload: {
   bank: string;
   bankCode: string;
   accountNumber: string;
+  /** User's wallet address (STX or BTC).  Forwarded to the chain monitor. */
+  senderAddress?: string;
 }): Promise<Transfer> {
   const res = await fetch(`${BASE_URL}/api/transfers`, {
     method: "POST",

@@ -9,8 +9,8 @@ import {
   SendToken,
   Currency,
 } from "../store";
-import { callFlwTransfer } from "./flutterwave";
 import { getTokenPriceUSD } from "./rates";
+import { prisma } from "../lib/prisma";
 
 const router = Router();
 
@@ -18,6 +18,9 @@ const router = Router();
 const FEE_RATE = 0.015; // 1.5%
 
 // ─── POST /api/transfers — create a new transfer ─────────────────────────────
+// The Flutterwave payout is NOT triggered here. The chain monitor
+// (src/lib/chainMonitor.ts) polls the blockchain and fires the payout once the
+// user's on-chain deposit is confirmed.
 router.post("/", async (req: Request, res: Response) => {
   const {
     sendAmount,
@@ -26,6 +29,7 @@ router.post("/", async (req: Request, res: Response) => {
     bank,
     bankCode,
     accountNumber,
+    senderAddress = "",
   } = req.body as {
     sendAmount: number;
     sendToken: SendToken;
@@ -33,6 +37,10 @@ router.post("/", async (req: Request, res: Response) => {
     bank: string;
     bankCode: string;
     accountNumber: string;
+    /** The user's wallet address (STX or BTC).  Used by the chain monitor to
+     *  cross-check the on-chain sender.  Optional — if absent the monitor
+     *  checks for any matching deposit amount to the admin address. */
+    senderAddress?: string;
   };
 
   // Validation
@@ -47,13 +55,27 @@ router.post("/", async (req: Request, res: Response) => {
     return res.status(400).json({ error: "Missing required fields." });
   }
 
+  // Look up the admin deposit address for this token so the chain monitor
+  // knows exactly which blockchain address to watch.
+  const depositRow = await prisma.depositAddress.findUnique({
+    where: { token: sendToken },
+  });
+  if (!depositRow) {
+    return res.status(400).json({
+      error: `No deposit address configured for ${sendToken}. Please contact support.`,
+    });
+  }
+  const depositAddress = depositRow.address;
+
   let usdEquivalent: number;
   try {
     const tokenPrice = await getTokenPriceUSD(sendToken);
     usdEquivalent = sendAmount * tokenPrice;
   } catch (err) {
     console.error("[TRANSFERS] Failed to fetch token price:", err);
-    return res.status(502).json({ error: "Could not fetch live token price. Please try again." });
+    return res
+      .status(502)
+      .json({ error: "Could not fetch live token price. Please try again." });
   }
 
   const fee = usdEquivalent * FEE_RATE;
@@ -72,30 +94,20 @@ router.post("/", async (req: Request, res: Response) => {
     bank,
     bankCode,
     accountNumber,
+    senderAddress,
+    depositAddress,
+    claimedTxId: "",
+    // Status stays "pending" until the chain monitor detects the on-chain
+    // deposit and updates it to "processing".
     status: "pending",
   };
 
   await addTransfer(transfer);
 
-  // Fire Flutterwave transfer in the background (don't block the response)
-  setImmediate(async () => {
-    try {
-      updateTransferStatus(transfer.id, "processing");
-      const result = await callFlwTransfer({
-        account_number: accountNumber,
-        account_bank: bankCode,
-        amount: receiveAmount,
-        currency: receiveCurrency,
-        narration: `Sassaby: ${sendAmount} ${sendToken} → ${receiveCurrency}`,
-      });
-      console.log(`[FLW] Transfer ${transfer.id} initiated:`, result);
-      // Status will be confirmed via webhook; mark as processing for now
-      updateTransferStatus(transfer.id, "processing");
-    } catch (err) {
-      console.error(`[FLW] Transfer ${transfer.id} failed:`, err);
-      updateTransferStatus(transfer.id, "failed");
-    }
-  });
+  console.log(
+    `[TRANSFERS] Transfer ${transfer.id} created — awaiting on-chain confirmation ` +
+      `at ${depositAddress} for ${sendAmount} ${sendToken}`
+  );
 
   return res.status(201).json({ success: true, transfer });
 });

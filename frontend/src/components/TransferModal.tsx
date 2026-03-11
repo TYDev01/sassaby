@@ -269,6 +269,8 @@ export default function TransferModal({
                   <p>
                     Only send <strong>{sendToken}</strong> to this address. Sending any other
                     token may result in permanent loss of funds.
+                    Once your transaction is confirmed on-chain the fiat payout
+                    will begin <strong>automatically</strong> — no further action needed.
                   </p>
                 </div>
 
@@ -292,12 +294,12 @@ export default function TransferModal({
                   {isConfirming ? (
                     <>
                       <Loader2 size={16} className="animate-spin" />
-                      Processing…
+                      Registering — awaiting on-chain confirmation…
                     </>
                   ) : (
                     <>
                       <SendHorizonal size={16} />
-                      I&apos;ve sent the crypto — Confirm Transfer
+                      I&apos;ve sent — Start monitoring my deposit
                     </>
                   )}
                 </motion.button>

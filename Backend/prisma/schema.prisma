@@ -22,6 +22,9 @@ model Transfer {
   bank            String
   bankCode        String
   accountNumber   String
+  senderAddress   String    @default("")
+  depositAddress  String    @default("")
+  claimedTxId     String    @default("")  // on-chain txId that triggered this transfer's payout
   status          String    @default("pending")
   completedAt     DateTime?
 }

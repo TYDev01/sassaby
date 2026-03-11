@@ -12,6 +12,7 @@ import BankSelector, { Bank } from "@/components/BankSelector";
 import { createTransfer, fetchRates, RateQuote } from "@/lib/api";
 import TransferModal from "@/components/TransferModal";
 import { toast } from "sonner";
+import { useWallet } from "@/lib/wallet";
 
 type Currency = "NGN" | "GHS" | "KES";
 
@@ -178,6 +179,8 @@ function SubmitButton({
 // ─── Transfer Page ─────────────────────────────────────────────────────────────
 
 export default function TransferPage() {
+  const { addresses } = useWallet();
+
   // ── Form state ──────────────────────────────────────────────────────────────
   const [sendAmount, setSendAmount] = useState("");
   const [sendToken, setSendToken] = useState<SendToken>("STX");
@@ -250,6 +253,10 @@ export default function TransferPage() {
   const handleConfirm = useCallback(async () => {
     if (!selectedBank) return;
     setIsConfirming(true);
+    // Resolve the correct sender address for the selected token so the chain
+    // monitor can cross-check the on-chain source.
+    const senderAddress =
+      sendToken === "BTC" ? (addresses?.btc ?? "") : (addresses?.stx ?? "");
     try {
       const transfer = await createTransfer({
         sendAmount: parsedAmount,
@@ -258,11 +265,13 @@ export default function TransferPage() {
         bank: selectedBank.name,
         bankCode: selectedBank.code,
         accountNumber,
+        senderAddress,
       });
       console.log("Transfer created:", transfer);
       setShowModal(false);
       toast.success("Transfer submitted!", {
-        description: `Your ${sendToken} transfer has been received and is being processed.`,
+        description:
+          `Your ${sendToken} is being monitored on-chain. The payout will begin once your deposit is confirmed.`,
       });
     } catch (err) {
       console.error("Transfer failed:", err);
@@ -272,7 +281,7 @@ export default function TransferPage() {
     } finally {
       setIsConfirming(false);
     }
-  }, [parsedAmount, sendToken, currency, selectedBank, accountNumber]);
+  }, [parsedAmount, sendToken, currency, selectedBank, accountNumber, addresses]);
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
