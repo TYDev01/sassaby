@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import { User, Bell, LayoutDashboard } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -18,45 +19,15 @@ const TAB_ROUTES: Record<NavTab, string> = {
 
 function StacksBridgeLogo() {
   return (
-    <div className="flex items-center gap-2 cursor-pointer select-none">
-      {/* Stacked layers icon */}
-      <div className="relative w-8 h-8 flex items-center justify-center">
-        <svg
-          viewBox="0 0 32 32"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-          className="w-8 h-8"
-        >
-          {/* Orange rounded square background */}
-          <rect width="32" height="32" rx="8" fill="#f97316" />
-          {/* Stacked layers */}
-          <path
-            d="M8 20l8 4 8-4"
-            stroke="white"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          <path
-            d="M8 16l8 4 8-4"
-            stroke="white"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          <path
-            d="M8 12l8-4 8 4-8 4-8-4z"
-            stroke="white"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            fill="none"
-          />
-        </svg>
-      </div>
-      <span className="text-white font-semibold text-[15px] tracking-tight">
-        Sassaby
-      </span>
+    <div className="flex items-center cursor-pointer select-none drop-shadow-xl">
+      <Image
+        src="/logo.png"
+        alt="Sassaby logo"
+        width={156}
+        height={156}
+        className="rounded-xl"
+        priority
+      />
     </div>
   );
 }
@@ -128,33 +99,42 @@ export default function Navbar() {
     pathname === "/history" ? "history" : "transfer";
 
   const tabs: { label: string; key: NavTab }[] = [
-    { label: "Transfer", key: "transfer" },
+    // { label: "Transfer", key: "transfer" },
     { label: "History", key: "history" },
   ];
 
   return (
-    <div className="w-full flex justify-center px-6 pt-5 fixed top-0 left-0 right-0 z-50">
+    <div className="w-full flex justify-center px-6  pt-5 fixed top-0 left-0 right-0 z-50">
       <motion.header
         initial={{ opacity: 0, y: -16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, ease: "easeOut" }}
         className="
+          relative
           w-full max-w-[95%] sm:max-w-[80%] lg:max-w-[60%]
           flex items-center justify-between
-          px-3 sm:px-4 py-2.5
+          px-5 sm:px-5 py-3
           rounded-2xl
           bg-white/[0.04] backdrop-blur-md
           border border-white/[0.08]
           shadow-[0_8px_32px_rgba(0,0,0,0.4)]
+          overflow-visible
         "
       >
-        {/* Logo */}
-        <Link href="/" aria-label="Stacks Bridge home">
+        {/* Logo — straddles the top edge of the navbar pill */}
+        <Link
+          href="/"
+          aria-label="Sassaby home"
+          className="absolute -top-10 left-6 z-50 drop-shadow-[0_10px_20px_rgba(0,0,0,0.6)]"
+        >
           <StacksBridgeLogo />
         </Link>
 
-        {/* Navigation tabs */}
-        <nav className="flex items-center gap-1" aria-label="Main navigation">
+        {/* Spacer to push icons to the right */}
+        <div className="flex-1" />
+
+        {/* Action icons — History tab sits right beside the icon buttons */}
+        <div className="flex items-center gap-1">
           {tabs.map(({ label, key }) => (
             <NavTab
               key={key}
@@ -163,10 +143,6 @@ export default function Navbar() {
               activeTab={activeTab}
             />
           ))}
-        </nav>
-
-        {/* Action icons */}
-        <div className="flex items-center gap-1">
           <Link href="/admin" aria-label="Admin dashboard">
             <motion.div
               whileHover={{ scale: 1.08 }}
@@ -178,17 +154,12 @@ export default function Navbar() {
               }`}
               title="Admin Dashboard"
             >
-              <LayoutDashboard size={18} />
-            </motion.div>
-          </Link>
-          <span className="hidden sm:flex items-center gap-1">
             <IconButton label="Account">
               <User size={18} />
             </IconButton>
-            <IconButton label="Notifications">
-              <Bell size={18} />
-            </IconButton>
-          </span>
+              {/* <LayoutDashboard size={18} /> */}
+            </motion.div>
+          </Link>
         </div>
       </motion.header>
     </div>
