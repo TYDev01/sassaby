@@ -76,6 +76,13 @@ export async function createTransfer(payload: {
   return data.transfer;
 }
 
+export async function getTransfer(id: string): Promise<Transfer> {
+  const res = await fetch(`${BASE_URL}/api/transfers/${id}`, { cache: "no-store" });
+  if (!res.ok) throw new Error("Failed to fetch transfer");
+  const data = await res.json();
+  return data.transfer as Transfer;
+}
+
 // ─── Rate quotes ─────────────────────────────────────────────────────────────
 
 export interface RateQuote {

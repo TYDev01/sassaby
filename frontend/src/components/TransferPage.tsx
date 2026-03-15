@@ -9,7 +9,7 @@ import TransferCard, { SendToken } from "@/components/TransferCard";
 import ReceiveCard from "@/components/ReceiveCard";
 import BankSelector, { Bank } from "@/components/BankSelector";
 
-import { createTransfer, fetchRates, RateQuote } from "@/lib/api";
+import { createTransfer, fetchRates, RateQuote, TransferStatus } from "@/lib/api";
 import TransferModal from "@/components/TransferModal";
 import { toast } from "sonner";
 import { useWallet } from "@/lib/wallet";
@@ -242,6 +242,7 @@ export default function TransferPage() {
 
   const [showModal, setShowModal] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
+  const [monitoringTransferId, setMonitoringTransferId] = useState<string | null>(null);
 
   /** Step 1: open the modal showing where to send crypto */
   const handleSubmit = useCallback(() => {
@@ -268,20 +269,34 @@ export default function TransferPage() {
         senderAddress,
       });
       console.log("Transfer created:", transfer);
-      setShowModal(false);
-      toast.success("Transfer submitted!", {
-        description:
-          `Your ${sendToken} is being monitored on-chain. The payout will begin once your deposit is confirmed.`,
-      });
+      setIsConfirming(false);
+      // Switch to monitoring mode — keep modal open, poll for status
+      setMonitoringTransferId(transfer.id);
     } catch (err) {
       console.error("Transfer failed:", err);
       toast.error("Transfer failed", {
         description: "Could not submit your transfer. Please try again.",
       });
-    } finally {
       setIsConfirming(false);
     }
   }, [parsedAmount, sendToken, currency, selectedBank, accountNumber, addresses]);
+
+  const handleMonitoringDone = useCallback((status: TransferStatus) => {
+    if (status === "completed") {
+      toast.success("Payout sent!", {
+        description: `Your ${currency} has been sent to your bank account.`,
+      });
+    } else {
+      toast.error("Transfer failed", {
+        description: "The payout could not be completed. Please contact support.",
+      });
+    }
+  }, [currency]);
+
+  const handleModalClose = useCallback(() => {
+    setShowModal(false);
+    setMonitoringTransferId(null);
+  }, []);
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
@@ -290,9 +305,11 @@ export default function TransferPage() {
       {/* Transfer confirmation modal */}
       <TransferModal
         open={showModal}
-        onClose={() => setShowModal(false)}
+        onClose={handleModalClose}
         onConfirm={handleConfirm}
         isConfirming={isConfirming}
+        monitoringTransferId={monitoringTransferId}
+        onMonitoringDone={handleMonitoringDone}
         sendAmount={parsedAmount}
         sendToken={sendToken}
         receiveAmount={receiveAmount}

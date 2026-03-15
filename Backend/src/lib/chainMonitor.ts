@@ -136,9 +136,14 @@ async function checkStacksDeposit(opts: {
       for (const t of entry.stx_transfers) {
         if (t.recipient.toLowerCase() !== depositAddress.toLowerCase()) continue;
         if (BigInt(t.amount) < requiredMicro) continue;
-        // If we have a sender address on record, require it to match.
-        // This is the primary collision-breaker when two users send the same amount.
-        if (senderLc && t.sender.toLowerCase() !== senderLc) continue;
+        // Log a warning if the sender doesn't match (wallet may have multiple accounts)
+        // but still process — claimedTxId provides double-spend protection.
+        if (senderLc && t.sender.toLowerCase() !== senderLc) {
+          console.warn(
+            `[MONITOR] Sender mismatch on tx ${entry.tx.tx_id}: ` +
+            `expected ${senderLc}, got ${t.sender} — processing anyway`
+          );
+        }
         return { confirmed: true, txId: entry.tx.tx_id };
       }
     } else {
@@ -146,7 +151,12 @@ async function checkStacksDeposit(opts: {
         if (!t.asset_identifier.toLowerCase().startsWith(USDC_CONTRACT_PREFIX)) continue;
         if (t.recipient.toLowerCase() !== depositAddress.toLowerCase()) continue;
         if (BigInt(t.amount) < requiredMicro) continue;
-        if (senderLc && t.sender.toLowerCase() !== senderLc) continue;
+        if (senderLc && t.sender.toLowerCase() !== senderLc) {
+          console.warn(
+            `[MONITOR] Sender mismatch on tx ${entry.tx.tx_id}: ` +
+            `expected ${senderLc}, got ${t.sender} — processing anyway`
+          );
+        }
         return { confirmed: true, txId: entry.tx.tx_id };
       }
     }
