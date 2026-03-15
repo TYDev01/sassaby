@@ -5,9 +5,7 @@ import { adminAuth } from "../middleware/adminAuth";
 
 const router = Router();
 
-const FLW_V4_BASE = "https://api.flutterwave.com";
-const FLW_IDP =
-  "https://idp.flutterwave.com/realms/flutterwave/protocol/openid-connect/token";
+const FLW_V3_BASE = "https://api.flutterwave.com/v3";
 
 // ─── CoinGecko ID map (no API key required) ───────────────────────────────────
 
@@ -31,7 +29,7 @@ export async function getTokenPriceUSD(token: string): Promise<number> {
 
   const { data: json } = await axios.get<Record<string, { usd: number }>>(
     `https://api.coingecko.com/api/v3/simple/price?ids=${geckoId}&vs_currencies=usd`,
-    { headers: { Accept: "application/json" }, timeout: 10_000 }
+    { headers: { Accept: "application/json", "User-Agent": "Sassaby/1.0 (https://sassaby.app)" }, timeout: 10_000 }
   );
   const price = json[geckoId]?.usd;
   if (!price) throw new Error(`No price data for ${token}`);
@@ -40,30 +38,7 @@ export async function getTokenPriceUSD(token: string): Promise<number> {
   return price;
 }
 
-// ─── Flutterwave OAuth token (10-min TTL) ────────────────────────────────────
 
-let cachedToken: string | null = null;
-let tokenExpiresAt = 0;
-
-async function getAccessToken(): Promise<string> {
-  if (cachedToken && Date.now() < tokenExpiresAt) return cachedToken;
-  const clientId = process.env.FLW_CLIENT_ID;
-  const clientSecret = process.env.FLW_CLIENT_SECRET;
-  if (!clientId || !clientSecret)
-    throw new Error("FLW_CLIENT_ID or FLW_CLIENT_SECRET is not set.");
-
-  const params = new URLSearchParams({
-    client_id: clientId, client_secret: clientSecret, grant_type: "client_credentials",
-  });
-  const { data: json } = await axios.post<{ access_token: string; expires_in: number }>(
-    FLW_IDP,
-    params.toString(),
-    { headers: { "Content-Type": "application/x-www-form-urlencoded" }, timeout: 10_000 }
-  );
-  cachedToken = json.access_token;
-  tokenExpiresAt = Date.now() + (json.expires_in - 30) * 1000;
-  return cachedToken;
-}
 
 // ─── Supported currencies ────────────────────────────────────────────────────
 
@@ -182,14 +157,19 @@ export async function getFlwRate(destCurrency: string): Promise<{ rate: number }
   if (cached && Date.now() < cached.expiresAt) return { rate: cached.rate };
 
   try {
-    const token = await getAccessToken();
-    const { data: json } = await axios.post<{ data?: { rate: string } }>(
-      `${FLW_V4_BASE}/transfers/rates`,
-      { source: { currency: "USD" }, destination: { currency: destCurrency }, precision: 4 },
-      { headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, timeout: 10_000 }
+    const secretKey = process.env.FLW_SECRET_KEY;
+    if (!secretKey) throw new Error("FLW_SECRET_KEY is not set.");
+    const { data: json } = await axios.get<{
+      status: string;
+      data?: { rate: number; source: { amount: number }; destination: { amount: number } };
+    }>(
+      `${FLW_V3_BASE}/transfers/rates?amount=1&source_currency=USD&destination_currency=${encodeURIComponent(destCurrency)}`,
+      { headers: { Authorization: `Bearer ${secretKey}` }, timeout: 10_000 }
     );
-    const rate = parseFloat(json.data?.rate ?? "0");
-    if (rate > 0) {
+    // data.rate = USD per 1 dest unit; invert to get dest units per 1 USD
+    const rawRate = json.data?.rate;
+    if (rawRate && rawRate > 0) {
+      const rate = 1 / rawRate;
       flwRateCache[cacheKey] = { rate, expiresAt: Date.now() + 5 * 60_000 };
       return { rate };
     }
@@ -249,7 +229,9 @@ router.get("/", async (req: Request, res: ExpressResponse) => {
     } satisfies RateQuoteResponse);
   } catch (err) {
     console.error("[RATES]", err);
-    const msg = err instanceof Error ? err.message : "Failed to fetch rates.";
+    const msg = err instanceof Error
+      ? (err.message || err.constructor.name || "Failed to fetch rates.")
+      : "Failed to fetch rates.";
     return res.status(502).json({ error: msg });
   }
 });
