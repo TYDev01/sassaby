@@ -120,7 +120,9 @@ async function checkStacksDeposit(opts: {
     timeout: 15_000,
   });
 
-  const afterMs       = new Date(afterIso).getTime();
+  // Look back 2 hours before createdAt so we catch txns sent before the
+  // transfer record was created (common when user sends first, then fills form).
+  const afterMs       = new Date(afterIso).getTime() - 2 * 60 * 60 * 1_000;
   const micro         = token === "STX" ? STX_MICRO : USDC_MICRO;
   const requiredMicro = BigInt(Math.floor(sendAmount * micro));
   const senderLc      = senderAddress.toLowerCase();
@@ -179,7 +181,8 @@ async function checkBtcDeposit(opts: {
   const { depositAddress, sendAmount, afterIso, claimedTxIds } = opts;
 
   const requiredSats = Math.floor(sendAmount * BTC_SATS);
-  const afterMs      = new Date(afterIso).getTime();
+  // Look back 2 hours before createdAt (same reason as STX check above).
+  const afterMs      = new Date(afterIso).getTime() - 2 * 60 * 60 * 1_000;
 
   const { data: txs } = await axios.get<BlockstreamTx[]>(
     `${BTC_API}/address/${encodeURIComponent(depositAddress)}/txs`,
