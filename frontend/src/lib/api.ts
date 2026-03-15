@@ -38,10 +38,13 @@ export interface AdminStats {
 
 const BASE_URL = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000").replace(/\/$/, "");
 
+/** Next.js origin for server-side proxy routes (admin calls stay server-side). */
+const NEXTJS_ORIGIN = typeof window === "undefined" ? "http://localhost:3000" : "";
+
 // ─── API helpers ─────────────────────────────────────────────────────────────
 
 export async function fetchAdminStats(): Promise<AdminStats> {
-  const res = await fetch(`${BASE_URL}/api/admin/stats`, { cache: "no-store" });
+  const res = await fetch(`${NEXTJS_ORIGIN}/api/admin/stats`, { cache: "no-store" });
   if (!res.ok) throw new Error("Failed to fetch admin stats");
   return res.json();
 }
@@ -108,13 +111,13 @@ export interface RateConfig {
 }
 
 export async function fetchRateConfig(): Promise<RateConfig> {
-  const res = await fetch(`${BASE_URL}/api/rates/config`, { cache: "no-store" });
+  const res = await fetch(`${NEXTJS_ORIGIN}/api/rates/config`, { cache: "no-store" });
   if (!res.ok) throw new Error("Failed to fetch rate config");
   return res.json();
 }
 
 export async function updateRateConfig(patch: Partial<RateConfig>): Promise<RateConfig> {
-  const res = await fetch(`${BASE_URL}/api/rates/config`, {
+  const res = await fetch(`${NEXTJS_ORIGIN}/api/rates/config`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(patch),
@@ -138,7 +141,7 @@ export interface DepositAddressMap {
 }
 
 export async function fetchDepositAddresses(): Promise<DepositAddressMap> {
-  const res = await fetch(`${BASE_URL}/api/deposit-addresses`, { cache: "no-store" });
+  const res = await fetch(`${NEXTJS_ORIGIN}/api/deposit-addresses`, { cache: "no-store" });
   if (!res.ok) throw new Error("Failed to fetch deposit addresses");
   return res.json();
 }
@@ -148,7 +151,7 @@ export async function upsertDepositAddress(
   address: string,
   label = ""
 ): Promise<DepositAddress> {
-  const res = await fetch(`${BASE_URL}/api/deposit-addresses`, {
+  const res = await fetch(`${NEXTJS_ORIGIN}/api/deposit-addresses`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ token, address, label }),
@@ -159,7 +162,7 @@ export async function upsertDepositAddress(
 }
 
 export async function deleteDepositAddress(token: SendToken): Promise<void> {
-  await fetch(`${BASE_URL}/api/deposit-addresses/${token}`, { method: "DELETE" });
+  await fetch(`${NEXTJS_ORIGIN}/api/deposit-addresses/${token}`, { method: "DELETE" });
 }
 
 // ─── Flutterwave helpers ──────────────────────────────────────────────────────
