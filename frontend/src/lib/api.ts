@@ -72,8 +72,17 @@ export async function createTransfer(payload: {
     body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error("Failed to create transfer");
+  // POST /api/transfers returns a flat object: { success, id, status, ... }
   const data = await res.json();
-  return data.transfer;
+  return data as Transfer;
+}
+
+export async function getTransfer(id: string): Promise<Transfer> {
+  const res = await fetch(`${BASE_URL}/api/transfers/${id}`, { cache: "no-store" });
+  if (!res.ok) throw new Error("Failed to fetch transfer");
+  const data = await res.json();
+  // GET /api/transfers/:id returns { transfer: {...} }
+  return (data.transfer ?? data) as Transfer;
 }
 
 // ─── Rate quotes ─────────────────────────────────────────────────────────────

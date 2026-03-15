@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
 import { motion, AnimatePresence } from "framer-motion";
-import { Copy, Check, X, Loader2, AlertCircle, SendHorizonal } from "lucide-react";
-import { SendToken, fetchDepositAddresses, DepositAddress } from "@/lib/api";
+import { Copy, Check, X, Loader2, AlertCircle, SendHorizonal, CheckCircle2, XCircle } from "lucide-react";
+import { SendToken, fetchDepositAddresses, DepositAddress, getTransfer, TransferStatus } from "@/lib/api";
 
 const QRCode = dynamic(() => import("react-qr-code"), { ssr: false });
 
@@ -16,6 +16,10 @@ interface TransferModalProps {
   /** Called once the user confirms they've sent the crypto. */
   onConfirm: () => void;
   isConfirming: boolean;
+  /** When set, modal enters monitoring mode and polls this transfer ID. */
+  monitoringTransferId: string | null;
+  /** Called when monitoring resolves (completed or failed). */
+  onMonitoringDone: (status: TransferStatus) => void;
 
   sendAmount: number;
   sendToken: SendToken;
@@ -44,6 +48,8 @@ export default function TransferModal({
   onClose,
   onConfirm,
   isConfirming,
+  monitoringTransferId,
+  onMonitoringDone,
   sendAmount,
   sendToken,
   receiveAmount,
@@ -53,6 +59,42 @@ export default function TransferModal({
   const [addressLoading, setAddressLoading] = useState(false);
   const [addressError, setAddressError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+
+  // Monitoring phase state
+  const [monitoringStatus, setMonitoringStatus] = useState<TransferStatus | null>(null);
+  const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── Poll transfer status when monitoring ─────────────────────────────────
+  useEffect(() => {
+    if (!monitoringTransferId) {
+      setMonitoringStatus(null);
+      return;
+    }
+
+    let cancelled = false;
+    setMonitoringStatus("pending");
+
+    const poll = async () => {
+      try {
+        const transfer = await getTransfer(monitoringTransferId);
+        if (cancelled) return;
+        setMonitoringStatus(transfer.status);
+        if (transfer.status === "completed" || transfer.status === "failed") {
+          onMonitoringDone(transfer.status);
+          return; // stop polling
+        }
+      } catch { /* silently retry */ }
+      if (!cancelled) {
+        pollRef.current = setTimeout(poll, 6_000);
+      }
+    };
+
+    poll();
+    return () => {
+      cancelled = true;
+      if (pollRef.current) clearTimeout(pollRef.current);
+    };
+  }, [monitoringTransferId, onMonitoringDone]);
 
   // ── Fetch deposit address when modal opens ────────────────────────────────
   useEffect(() => {
@@ -102,6 +144,7 @@ export default function TransferModal({
   }, [open, onClose]);
 
   const color = TOKEN_COLORS[sendToken];
+  const isMonitoring = !!monitoringTransferId;
 
   return (
     <AnimatePresence>
@@ -115,7 +158,7 @@ export default function TransferModal({
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
             className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm"
-            onClick={onClose}
+            onClick={isMonitoring ? undefined : onClose}
           />
 
           {/* Modal panel */}
@@ -145,7 +188,9 @@ export default function TransferModal({
               >
                 <div className="flex items-center gap-2">
                   <SendHorizonal size={16} style={{ color }} />
-                  <h2 className="text-white font-semibold text-sm">Send {sendToken}</h2>
+                  <h2 className="text-white font-semibold text-sm">
+                    {isMonitoring ? "Monitoring Deposit" : `Send ${sendToken}`}
+                  </h2>
                 </div>
                 <button
                   onClick={onClose}
@@ -155,7 +200,87 @@ export default function TransferModal({
                 </button>
               </div>
 
-              {/* ── Body ───────────────────────────────────────────────────── */}
+              {/* ── Monitoring view ─────────────────────────────────────────── */}
+              {isMonitoring ? (
+                <div className="px-6 py-10 flex flex-col items-center gap-6 text-center">
+                  {monitoringStatus === "completed" ? (
+                    <>
+                      <CheckCircle2 size={56} className="text-emerald-400" />
+                      <div>
+                        <p className="text-white font-semibold text-lg">Payout sent!</p>
+                        <p className="text-gray-400 text-sm mt-1">
+                          Your {receiveCurrency} is on its way to your bank account.
+                        </p>
+                      </div>
+                      <button
+                        onClick={onClose}
+                        className="mt-2 px-6 py-2.5 rounded-xl bg-emerald-500 text-white text-sm font-semibold hover:bg-emerald-400 transition-colors cursor-pointer"
+                      >
+                        Done
+                      </button>
+                    </>
+                  ) : monitoringStatus === "failed" ? (
+                    <>
+                      <XCircle size={56} className="text-red-400" />
+                      <div>
+                        <p className="text-white font-semibold text-lg">Transfer failed</p>
+                        <p className="text-gray-400 text-sm mt-1">
+                          The on-chain deposit wasn&apos;t detected or the payout failed. Please contact support.
+                        </p>
+                      </div>
+                      <button
+                        onClick={onClose}
+                        className="mt-2 px-6 py-2.5 rounded-xl bg-red-500/20 border border-red-500/30 text-red-400 text-sm font-semibold hover:bg-red-500/30 transition-colors cursor-pointer"
+                      >
+                        Close
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      {/* Animated scanning rings */}
+                      <div className="relative flex items-center justify-center w-24 h-24">
+                        {[0, 1, 2].map((i) => (
+                          <motion.div
+                            key={i}
+                            className="absolute rounded-full border-2"
+                            style={{ borderColor: color }}
+                            initial={{ opacity: 0.6, scale: 0.6 }}
+                            animate={{ opacity: 0, scale: 1.8 }}
+                            transition={{
+                              duration: 2.2,
+                              repeat: Infinity,
+                              delay: i * 0.7,
+                              ease: "easeOut",
+                            }}
+                          />
+                        ))}
+                        <div
+                          className="w-14 h-14 rounded-full flex items-center justify-center"
+                          style={{ backgroundColor: `${color}22`, border: `2px solid ${color}` }}
+                        >
+                          <Loader2 size={24} style={{ color }} className="animate-spin" />
+                        </div>
+                      </div>
+
+                      <div>
+                        <p className="text-white font-semibold text-base">
+                          Watching the blockchain…
+                        </p>
+                        <p className="text-gray-400 text-sm mt-1 max-w-[300px]">
+                          Checking every few seconds for your{" "}
+                          <span style={{ color }} className="font-medium">{sendAmount} {sendToken}</span>{" "}
+                          deposit. The fiat payout will trigger automatically once confirmed.
+                        </p>
+                      </div>
+
+                      <p className="text-gray-600 text-xs">
+                        You can close this — monitoring continues in the background.
+                      </p>
+                    </>
+                  )}
+                </div>
+              ) : (
+              /* ── Normal deposit view ──────────────────────────────────────── */
               <div className="px-6 py-6 flex flex-col gap-6">
 
                 {/* Transfer summary */}
@@ -294,7 +419,7 @@ export default function TransferModal({
                   {isConfirming ? (
                     <>
                       <Loader2 size={16} className="animate-spin" />
-                      Registering — awaiting on-chain confirmation…
+                      Submitting transfer…
                     </>
                   ) : (
                     <>
@@ -304,6 +429,7 @@ export default function TransferModal({
                   )}
                 </motion.button>
               </div>
+              )} {/* end !isMonitoring */}
             </div>
           </motion.div>
         </>
