@@ -5,8 +5,6 @@ import { adminAuth } from "../middleware/adminAuth";
 const router = Router();
 
 const FLW_BASE = "https://api.flutterwave.com/v3";
-const FLW_V4_BASE = "https://api.flutterwave.com";
-const FLW_IDP = "https://idp.flutterwave.com/realms/flutterwave/protocol/openid-connect/token";
 
 /** Safely read the secret key — fails fast if not configured */
 function getSecretKey(): string {
@@ -15,48 +13,7 @@ function getSecretKey(): string {
   return key;
 }
 
-function getClientCredentials(): { clientId: string; clientSecret: string } {
-  const clientId = process.env.FLW_CLIENT_ID;
-  const clientSecret = process.env.FLW_CLIENT_SECRET;
-  if (!clientId || !clientSecret)
-    throw new Error("FLW_CLIENT_ID or FLW_CLIENT_SECRET is not set.");
-  return { clientId, clientSecret };
-}
-
-// ─── OAuth2 access token cache (10-min TTL) ───────────────────────────────────
-
-let cachedToken: string | null = null;
-let tokenExpiresAt = 0;
-
-async function getAccessToken(): Promise<string> {
-  if (cachedToken && Date.now() < tokenExpiresAt) return cachedToken;
-
-  const { clientId, clientSecret } = getClientCredentials();
-  const body = new URLSearchParams({
-    client_id: clientId,
-    client_secret: clientSecret,
-    grant_type: "client_credentials",
-  });
-
-  const res = await globalThis.fetch(FLW_IDP, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: body.toString(),
-  });
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({})) as Record<string, unknown>;
-    throw new Error(`Failed to get Flutterwave access token: ${JSON.stringify(err)}`);
-  }
-
-  const json = await res.json() as { access_token: string; expires_in: number };
-  cachedToken = json.access_token;
-  // Refresh 30s before expiry
-  tokenExpiresAt = Date.now() + (json.expires_in - 30) * 1000;
-  return cachedToken;
-}
-
-/** v3 fetch helper (uses secret key — for banks list + account resolve) */
+/** v3 fetch helper (uses secret key) */
 async function flwFetch(path: string, options: RequestInit = {}) {
   const key = getSecretKey();
   return globalThis.fetch(`${FLW_BASE}${path}`, {
@@ -64,20 +21,6 @@ async function flwFetch(path: string, options: RequestInit = {}) {
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${key}`,
-      ...(options.headers ?? {}),
-    },
-  });
-}
-
-/** v4 fetch helper (uses OAuth access token — for transfers) */
-async function flwV4Fetch(path: string, options: RequestInit = {}, extraHeaders: Record<string, string> = {}) {
-  const token = await getAccessToken();
-  return globalThis.fetch(`${FLW_V4_BASE}${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-      ...extraHeaders,
       ...(options.headers ?? {}),
     },
   });
@@ -208,7 +151,7 @@ export interface FlwTransferResult {
   status: string;
 }
 
-/** Core transfer logic — callable from both the route and transfers.ts */
+/** Core transfer logic — callable from both the route and chainMonitor */
 export async function callFlwTransfer(params: {
   account_number: string;
   account_bank: string;
@@ -218,63 +161,35 @@ export async function callFlwTransfer(params: {
 }): Promise<FlwTransferResult> {
   const { account_number, account_bank, amount, currency, narration } = params;
   const reference = uuidv4();
-  const traceId = uuidv4();
 
-  // Step 1: Create recipient
-  const recipientRes = await flwV4Fetch("/transfers/recipients", {
+  const res = await flwFetch("/transfers", {
     method: "POST",
     body: JSON.stringify({
-      type: "bank_ngn",
-      bank: { account_number, code: account_bank },
-    }),
-  }, {
-    "X-Trace-Id": traceId,
-    "X-Idempotency-Key": `rcpt-${reference}`,
-  });
-
-  if (!recipientRes.ok) {
-    const err = await recipientRes.json().catch(() => ({})) as Record<string, unknown>;
-    console.error("[FLW] create recipient failed:", err);
-    throw new Error("Failed to create transfer recipient.");
-  }
-
-  const recipientJson = await recipientRes.json() as { data?: { id: string } };
-  const recipientId = recipientJson.data?.id;
-  if (!recipientId) throw new Error("No recipient ID returned from Flutterwave.");
-
-  // Step 2: Initiate transfer
-  const transferRes = await flwV4Fetch("/transfers", {
-    method: "POST",
-    body: JSON.stringify({
-      action: "instant",
-      reference,
+      account_bank,
+      account_number,
+      amount,
       narration: narration ?? "Sassaby crypto-to-fiat transfer",
-      payment_instruction: {
-        source_currency: currency,
-        destination_currency: currency,
-        amount: { applies_to: "destination_currency", value: amount },
-        recipient_id: recipientId,
-      },
+      currency,
+      reference,
+      debit_currency: currency,
     }),
-  }, {
-    "X-Trace-Id": traceId,
-    "X-Idempotency-Key": `trf-${reference}`,
   });
 
-  const transferJson = await transferRes.json().catch(() => ({})) as {
-    data?: { id: string; status: string };
+  const json = await res.json().catch(() => ({})) as {
+    status?: string;
     message?: string;
+    data?: { id: string | number; status: string };
   };
 
-  if (!transferRes.ok) {
-    console.error("[FLW] initiate transfer failed:", transferJson);
-    throw new Error(transferJson.message ?? "Failed to initiate transfer.");
+  if (!res.ok || json.status !== "success") {
+    console.error("[FLW] initiate transfer failed:", json);
+    throw new Error(json.message ?? "Failed to initiate transfer.");
   }
 
   return {
-    transfer_id: transferJson.data?.id ?? "",
+    transfer_id: String(json.data?.id ?? ""),
     reference,
-    status: transferJson.data?.status ?? "pending",
+    status: json.data?.status ?? "NEW",
   };
 }
 

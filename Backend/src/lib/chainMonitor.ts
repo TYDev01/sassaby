@@ -271,6 +271,7 @@ async function checkTransfer(
       narration:      `Sassaby: ${transfer.sendAmount} ${transfer.sendToken} → ${transfer.receiveCurrency}`,
     });
     console.log(`[FLW] Payout for transfer ${id} initiated:`, flwResult);
+    await updateTransferStatus(id, "completed", new Date().toISOString());
   } catch (err) {
     console.error(`[FLW] Payout failed for transfer ${id}:`, err);
     await updateTransferStatus(id, "failed");
