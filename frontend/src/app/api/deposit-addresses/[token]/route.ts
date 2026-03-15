@@ -5,12 +5,13 @@ const ADMIN_KEY = process.env.ADMIN_API_KEY ?? "";
 
 export async function DELETE(
   _req: NextRequest,
-  { params }: { params: { token: string } }
+  { params }: { params: Promise<{ token: string }> }
 ) {
   if (!ADMIN_KEY) {
     return NextResponse.json({ error: "Admin key not configured." }, { status: 503 });
   }
-  const res = await fetch(`${BACKEND}/api/deposit-addresses/${params.token}`, {
+  const { token } = await params;
+  const res = await fetch(`${BACKEND}/api/deposit-addresses/${token}`, {
     method: "DELETE",
     headers: { Authorization: `Bearer ${ADMIN_KEY}` },
   });
