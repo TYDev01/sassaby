@@ -159,16 +159,6 @@ router.post("/verify-account", async (req: Request, res: ExpressResponse) => {
     return res.status(400).json({ error: "Invalid account number format." });
   }
 
-  const secretKey = process.env.FLW_SECRET_KEY ?? "";
-  const isTestMode = secretKey.startsWith("FLWSECK_TEST");
-
-  if (isTestMode) {
-    return res.json({
-      account_name: "TEST ACCOUNT NAME",
-      account_number,
-    });
-  }
-
   try {
     const response = await flwFetch("/accounts/resolve", {
       method: "POST",

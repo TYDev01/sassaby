@@ -19,6 +19,10 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Sassaby",
   description: "Bridge between Crypto and local bank accounts",
+  icons: {
+    icon: "/logo.png",
+    apple: "/logo.png",
+  },
   other: {
     "talentapp:project_verification":
       "5932e84019224bc7c37261b86471db753efa525346beda05a8fd831a08c11e71cb00c1f54454d3427139a6e7cf180f2e048c207a53df4e9b6997d64c39b4a00a",
