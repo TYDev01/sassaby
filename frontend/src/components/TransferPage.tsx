@@ -21,6 +21,55 @@ type Currency = "NGN" | "GHS" | "KES";
 
 // ─── Hero Heading ─────────────────────────────────────────────────────────────
 
+const CRYPTO_WORDS = ["STX", "USDCx", "BTC"];
+const FIAT_WORDS = ["NGN", "GHS", "KES"];
+
+function CyclingWord({ words, delay = 0 }: { words: string[]; delay?: number }) {
+  const [index, setIndex] = useState(0);
+
+  useEffect(() => {
+    let intervalId: ReturnType<typeof setInterval>;
+    const timeoutId = setTimeout(() => {
+      intervalId = setInterval(() => setIndex((i) => (i + 1) % words.length), 2000);
+    }, delay);
+    return () => {
+      clearTimeout(timeoutId);
+      clearInterval(intervalId);
+    };
+  }, [words, delay]);
+
+  return (
+    <span className="relative inline-block text-[#f97316]" style={{ minWidth: "4ch" }}>
+      <AnimatePresence mode="wait">
+        <motion.span
+          key={words[index]}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -8 }}
+          transition={{ duration: 0.3 }}
+          className="inline-block"
+        >
+          {words[index]}
+        </motion.span>
+      </AnimatePresence>
+      <svg
+        viewBox="0 0 120 10"
+        className="absolute left-0 -bottom-2 w-full"
+        preserveAspectRatio="none"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M2 7 C20 2, 40 9, 60 5 C80 1, 100 8, 118 4"
+          stroke="#f97316"
+          strokeWidth="3"
+          strokeLinecap="round"
+          fill="none"
+        />
+      </svg>
+    </span>
+  );
+}
+
 function HeroHeading() {
   return (
     <motion.div
@@ -31,42 +80,10 @@ function HeroHeading() {
     >
       <h1 className="text-3xl sm:text-5xl font-bold text-white leading-tight tracking-tight">
         Bridge between{" "}
-        <span className="relative inline-block text-[#f97316]">
-          Crypto
-          <svg
-            viewBox="0 0 120 10"
-            className="absolute left-0 -bottom-2 w-full"
-            preserveAspectRatio="none"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <path
-              d="M2 7 C20 2, 40 9, 60 5 C80 1, 100 8, 118 4"
-              stroke="#f97316"
-              strokeWidth="3"
-              strokeLinecap="round"
-              fill="none"
-            />
-          </svg>
-        </span>
+        <CyclingWord words={CRYPTO_WORDS} />
         <br />
         and{" "}
-        <span className="relative inline-block text-[#f97316]">
-          local bank
-          <svg
-            viewBox="0 0 200 10"
-            className="absolute left-0 -bottom-2 w-full"
-            preserveAspectRatio="none"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <path
-              d="M2 7 C35 2, 70 9, 105 5 C140 1, 170 8, 198 4"
-              stroke="#f97316"
-              strokeWidth="3"
-              strokeLinecap="round"
-              fill="none"
-            />
-          </svg>
-        </span>{" "}
+        <CyclingWord words={FIAT_WORDS} delay={1000} />{" "}
         accounts
       </h1>
     </motion.div>
