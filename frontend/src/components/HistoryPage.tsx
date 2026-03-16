@@ -12,8 +12,10 @@ import {
   Copy,
   Check,
   ArrowUpRight,
+  ArrowLeft,
   RefreshCw,
 } from "lucide-react";
+import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import { useWallet } from "@/lib/wallet";
 import { fetchTransfers, Transfer } from "@/lib/api";
@@ -362,9 +364,22 @@ export default function HistoryPage() {
           animate={{ opacity: 1, y: 0 }}
           className="mb-8"
         >
-          <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
-            Transfer History
-          </h1>
+          <div className="flex items-center justify-between">
+            <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
+              Transfer History
+            </h1>
+            <Link href="/">
+              <motion.div
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                className="flex items-center gap-1.5 px-3 h-8 rounded-full bg-white/[0.06] hover:bg-white/[0.12] text-gray-400 hover:text-white text-xs font-medium transition-colors cursor-pointer"
+                title="Go to homepage"
+              >
+                <ArrowLeft size={14} />
+                Home
+              </motion.div>
+            </Link>
+          </div>
           <p className="text-gray-500 text-sm mt-1">
             {connected
               ? "All transfers associated with your account"
