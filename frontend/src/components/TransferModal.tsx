@@ -209,7 +209,7 @@ export default function TransferModal({
                       <div>
                         <p className="text-white font-semibold text-lg">Payout sent!</p>
                         <p className="text-gray-400 text-sm mt-1">
-                          Your {receiveCurrency} is on its way to your bank account.
+                          Your {receiveAmount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {receiveCurrency} is on its way to your bank account.
                         </p>
                       </div>
                       <button
@@ -373,7 +373,7 @@ export default function TransferModal({
                         Or scan QR code
                       </p>
                       <div
-                        className="p-4 bg-white rounded-2xl shadow-lg"
+                        className="p-4 bg-white rounded-2xl shadow-lg relative"
                         style={{ width: "fit-content" }}
                       >
                         <QRCode
@@ -381,8 +381,19 @@ export default function TransferModal({
                           size={160}
                           bgColor="#ffffff"
                           fgColor="#000000"
-                          level="M"
+                          level="H"
                         />
+                        {/* Logo overlay */}
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                          <img
+                            src="/logo.png"
+                            alt="logo"
+                            width={36}
+                            height={36}
+                            className="rounded-md"
+                            style={{ background: "#fff", padding: 2 }}
+                          />
+                        </div>
                       </div>
                     </div>
                   </div>
