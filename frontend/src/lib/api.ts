@@ -37,7 +37,7 @@ export interface AdminStats {
 const BASE_URL = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/+$/, "");
 
 /** Next.js origin for server-side proxy routes (admin calls stay server-side). */
-const NEXTJS_ORIGIN = typeof window === "undefined";
+const NEXTJS_ORIGIN = typeof window === "undefined" ? `http://localhost:${process.env.PORT ?? 3000}` : "";
 
 // ─── API helpers ─────────────────────────────────────────────────────────────
 
