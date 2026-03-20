@@ -1,7 +1,7 @@
 
 
 import { request } from "@stacks/connect";
-import { Pc, Cl } from "@stacks/transactions";
+import { Pc, Cl, postConditionToHex } from "@stacks/transactions";
 
 // JsonRpcError code -31001 means the user dismissed the wallet popup.
 // Leather also uses -32003 for user rejection.
@@ -103,10 +103,14 @@ export async function sendUSDCx(params: {
       // Deny mode: abort on-chain if any asset movement is not covered below.
       postConditionMode: "deny",
       // Exact post-condition: sender sends exactly this many USDCx tokens.
+      // Serialised to hex so the wallet can decode the bigint amount correctly
+      // (JSON.stringify cannot handle bigint, which causes the amount to become 0).
       postConditions: [
-        Pc.principal(senderAddress)
-          .willSendEq(microAmount)
-          .ft(USDC_CONTRACT_ID as `${string}.${string}`, USDC_TOKEN_NAME),
+        postConditionToHex(
+          Pc.principal(senderAddress)
+            .willSendEq(microAmount)
+            .ft(USDC_CONTRACT_ID as `${string}.${string}`, USDC_TOKEN_NAME),
+        ),
       ],
     });
     if (!result.txid) throw new Error("Wallet did not return a transaction ID");
