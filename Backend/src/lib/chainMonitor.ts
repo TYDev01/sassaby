@@ -30,7 +30,7 @@
  * Environment variables:
  *   STACKS_API_URL        Override Stacks API base (default: https://api.mainnet.hiro.so)
  *   STACKS_USDC_CONTRACT  Contract principal for USDCx, e.g.
- *                         SP3DX3H4FEYZJZ586MFBS25ZW3HZDMEW92260R2PR.Wrapped-USD
+ *                         SP120SBRBQJ00MCWS7TM5R8WJNTTKD5K0HFRC2CNE.usdcx
  */
 
 import axios from "axios";
@@ -51,7 +51,7 @@ const TRANSFER_TIMEOUT_MS = 30 * 60 * 1_000; // 30 minutes
 
 const USDC_CONTRACT_PREFIX = (
   process.env.STACKS_USDC_CONTRACT ??
-  "SP3DX3H4FEYZJZ586MFBS25ZW3HZDMEW92260R2PR.Wrapped-USD"
+  "SP120SBRBQJ00MCWS7TM5R8WJNTTKD5K0HFRC2CNE.usdcx"
 ).toLowerCase();
 
 // Smallest unit multipliers

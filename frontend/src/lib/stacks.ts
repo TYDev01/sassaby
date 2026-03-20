@@ -26,7 +26,7 @@ const STACKS_NETWORK = (process.env.NEXT_PUBLIC_STACKS_NETWORK ?? "mainnet") as
 
 const USDC_CONTRACT_ID =
   process.env.NEXT_PUBLIC_STACKS_USDC_CONTRACT ??
-  "SP3DX3H4FEYZJZ586MFBS25ZW3HZDMEW92260R2PR.Wrapped-USD";
+  "SP120SBRBQJ00MCWS7TM5R8WJNTTKD5K0HFRC2CNE.usdcx";
 
 // The defined-fungible-token name declared inside the Wrapped-USD contract.
 const USDC_TOKEN_NAME =
