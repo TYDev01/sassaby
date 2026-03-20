@@ -1,38 +1,3 @@
-/**
- * chainMonitor.ts
- *
- * Background service that polls the Stacks and Bitcoin blockchains to detect
- * when a user's crypto deposit has been confirmed on-chain.  Once a match is
- * found the Flutterwave fiat payout is triggered automatically.
- *
- * ── Collision prevention ────────────────────────────────────────────────────
- * Two things guarantee that the same on-chain tx never triggers two payouts:
- *
- *  1. Sender-address matching
- *     The user's wallet address (senderAddress, stored at transfer-creation
- *     time) is compared against the `sender` field in every on-chain transfer
- *     event from the Stacks API.  Two users sending the same amount to the
- *     same deposit address are still distinguished by their wallet address.
- *
- *  2. txId claiming
- *     As soon as a matching on-chain tx is found the transfer's `claimedTxId`
- *     is written to the DB (via `claimTransferTxId`) before Flutterwave is
- *     called.  The poll loop loads already-claimed txIds at the start of each
- *     cycle and skips them when matching — so the same tx can't be re-claimed
- *     even across multiple poll cycles or after a server restart.
- *     Within a single poll cycle, transfers are processed sequentially so that
- *     each claim is visible to subsequent checks in that same cycle.
- *
- * Supported networks:
- *   STX  / USDCx — Stacks mainnet via the Hiro Stacks API
- *   BTC          — Bitcoin via the Blockstream.info API (no key required)
- *
- * Environment variables:
- *   STACKS_API_URL        Override Stacks API base (default: https://api.mainnet.hiro.so)
- *   STACKS_USDC_CONTRACT  Contract principal for USDCx, e.g.
- *                         SP120SBRBQJ00MCWS7TM5R8WJNTTKD5K0HFRC2CNE.usdcx
- */
-
 import axios from "axios";
 import { getAllTransfers, updateTransferStatus, claimTransferTxId, Transfer } from "../store";
 import { callFlwTransfer } from "../routes/flutterwave";
