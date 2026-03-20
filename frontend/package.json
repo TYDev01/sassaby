@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@stacks/connect": "^8.2.5",
+    "@stacks/transactions": "^7.3.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "framer-motion": "^12.34.4",

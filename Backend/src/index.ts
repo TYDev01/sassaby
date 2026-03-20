@@ -15,7 +15,7 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT ?? 4000;
-const FRONTEND_URL = process.env.FRONTEND_URL ?? "http://localhost:3000";
+const FRONTEND_URL = process.env.FRONTEND_URL ?? "";
 const NODE_ENV = process.env.NODE_ENV ?? "development";
 
 // ─── Security headers (helmet) ────────────────────────────────────────────────
@@ -26,7 +26,7 @@ app.use(helmet());
 const allowedOrigins =
   NODE_ENV === "production"
     ? [FRONTEND_URL]
-    : [FRONTEND_URL, "http://localhost:3000"];
+    : [FRONTEND_URL, ""];
 
 app.use(
   cors({

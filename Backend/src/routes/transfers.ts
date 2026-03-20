@@ -2,7 +2,7 @@ import { Router, Request, Response } from "express";
 import { v4 as uuidv4 } from "uuid";
 import {
   addTransfer,
-  getAllTransfers,
+  getTransfersByWalletAddress,
   getTransferById,
   updateTransferStatus,
   Transfer,
@@ -91,11 +91,12 @@ router.post("/", async (req: Request, res: Response) => {
       getTokenPriceUSD(sendToken),
       getFlwRate(receiveCurrency),
     ]);
-    usdEquivalent = sendAmount * tokenPrice;
-    fee = usdEquivalent * FEE_RATE;
+    // Round at the boundary to prevent floating-point drift propagating.
+    usdEquivalent = Math.round(sendAmount * tokenPrice * 100) / 100;
+    fee           = Math.round(usdEquivalent * FEE_RATE * 100) / 100;
     // Store the actual fiat payout amount so the chain monitor can pass it
     // directly to Flutterwave without a second rate lookup.
-    receiveAmount = (usdEquivalent - fee) * flwRate;
+    receiveAmount = Math.round((usdEquivalent - fee) * flwRate * 100) / 100;
   } catch (err) {
     console.error("[TRANSFERS] Failed to fetch live rates:", err);
     return res
@@ -144,16 +145,39 @@ router.post("/", async (req: Request, res: Response) => {
   });
 });
 
-// ─── GET /api/transfers — list all transfers ──────────────────────────────────
-router.get("/", async (_req: Request, res: Response) => {
-  return res.json({ transfers: await getAllTransfers() });
+// ─── GET /api/transfers — list transfers by wallet address ──────────────────
+// Requires ?walletAddress= query param.  Returns PII-stripped transfer rows
+// belonging only to that wallet so no user can read another user's records.
+router.get("/", async (req: Request, res: Response) => {
+  const { walletAddress } = req.query as { walletAddress?: string };
+
+  if (!walletAddress || typeof walletAddress !== "string" || !walletAddress.trim()) {
+    return res.status(400).json({ error: "walletAddress query parameter is required." });
+  }
+
+  // Basic format guard — Stacks principal (SP/SM) or Bitcoin address
+  const stxRe = /^S[PM][0-9A-Z]{28,41}$/i;
+  const btcRe = /^[13][a-zA-HJ-NP-Z1-9]{25,34}$|^bc1[a-z0-9]{6,87}$/;
+  if (!stxRe.test(walletAddress) && !btcRe.test(walletAddress)) {
+    return res.status(400).json({ error: "Invalid wallet address format." });
+  }
+
+  const transfers = await getTransfersByWalletAddress(walletAddress);
+
+  // Strip financial PII (bank account number, bank code) from the public response.
+  const safeTransfers = transfers.map(
+    ({ accountNumber: _a, bankCode: _b, ...rest }) => rest
+  );
+  return res.json({ transfers: safeTransfers });
 });
 
-// ─── GET /api/transfers/:id — single transfer ─────────────────────────────────
+// ─── GET /api/transfers/:id — single transfer (status polling) ───────────────
+// Strip financial PII — callers only need status and public fields.
 router.get("/:id", async (req: Request, res: Response) => {
   const transfer = await getTransferById(req.params.id);
   if (!transfer) return res.status(404).json({ error: "Transfer not found." });
-  return res.json({ transfer });
+  const { accountNumber: _a, bankCode: _b, ...safe } = transfer;
+  return res.json({ transfer: safe });
 });
 
 // ─── PATCH /api/transfers/:id/status — manual status override ────────────────

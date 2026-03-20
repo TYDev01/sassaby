@@ -330,16 +330,18 @@ function TransferHistoryTable({
 // ─── History Page ─────────────────────────────────────────────────────────────
 
 export default function HistoryPage() {
-  const { connected } = useWallet();
+  const { connected, addresses } = useWallet();
   const [transfers, setTransfers] = useState<Transfer[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async (isRefresh = false) => {
+    const walletAddr = addresses?.stx || addresses?.btc || "";
+    if (!walletAddr) return;
     try {
       if (isRefresh) setRefreshing(true);
       else setLoading(true);
-      const data = await fetchTransfers();
+      const data = await fetchTransfers(walletAddr);
       setTransfers(data);
     } catch {
       // silently fail — table will show empty state
@@ -347,7 +349,7 @@ export default function HistoryPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [addresses]);
 
   useEffect(() => {
     if (connected) load();
@@ -382,7 +384,7 @@ export default function HistoryPage() {
           </div>
           <p className="text-gray-500 text-sm mt-1">
             {connected
-              ? "All transfers associated with your account"
+              ? "All transfers associated with your wallet"
               : "Connect your wallet to view your transfer history"}
           </p>
         </motion.div>

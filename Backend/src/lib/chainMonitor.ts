@@ -138,14 +138,10 @@ async function checkStacksDeposit(opts: {
       for (const t of entry.stx_transfers) {
         if (t.recipient.toLowerCase() !== depositAddress.toLowerCase()) continue;
         if (BigInt(t.amount) < requiredMicro) continue;
-        // Log a warning if the sender doesn't match (wallet may have multiple accounts)
-        // but still process — claimedTxId provides double-spend protection.
-        if (senderLc && t.sender.toLowerCase() !== senderLc) {
-          console.warn(
-            `[MONITOR] Sender mismatch on tx ${entry.tx.tx_id}: ` +
-            `expected ${senderLc}, got ${t.sender} — processing anyway`
-          );
-        }
+        // If the user provided their Stacks address, require the on-chain sender
+        // to match.  This prevents a deposit from a different wallet being
+        // claimed for this transfer (cross-user theft via amount collision).
+        if (senderLc && t.sender.toLowerCase() !== senderLc) continue;
         return { confirmed: true, txId: entry.tx.tx_id };
       }
     } else {
@@ -153,12 +149,9 @@ async function checkStacksDeposit(opts: {
         if (!t.asset_identifier.toLowerCase().startsWith(USDC_CONTRACT_PREFIX)) continue;
         if (t.recipient.toLowerCase() !== depositAddress.toLowerCase()) continue;
         if (BigInt(t.amount) < requiredMicro) continue;
-        if (senderLc && t.sender.toLowerCase() !== senderLc) {
-          console.warn(
-            `[MONITOR] Sender mismatch on tx ${entry.tx.tx_id}: ` +
-            `expected ${senderLc}, got ${t.sender} — processing anyway`
-          );
-        }
+        // Require on-chain sender to match when the address was captured at
+        // transfer-creation time.
+        if (senderLc && t.sender.toLowerCase() !== senderLc) continue;
         return { confirmed: true, txId: entry.tx.tx_id };
       }
     }
@@ -279,12 +272,22 @@ async function checkTransfer(
     const flwResult = await callFlwTransfer({
       account_number: transfer.accountNumber,
       account_bank:   transfer.bankCode,
-      amount:         transfer.receiveAmount,
+      // Ensure the fiat amount is rounded to 2 d.p. before sending to Flutterwave.
+      amount:         Math.round(transfer.receiveAmount * 100) / 100,
       currency:       transfer.receiveCurrency,
       narration:      `Sassaby: ${transfer.sendAmount} ${transfer.sendToken} → ${transfer.receiveCurrency}`,
+      // Stable reference for idempotent retries.
+      transferId:     id,
     });
     console.log(`[FLW] Payout for transfer ${id} initiated:`, flwResult);
-    await updateTransferStatus(id, "completed", new Date().toISOString());
+    // If FLW_WEBHOOK_SECRET is configured, Flutterwave will call the webhook
+    // to confirm final settlement — don’t auto-complete here.
+    // If no webhook is configured, mark completed optimistically.
+    if (!process.env.FLW_WEBHOOK_SECRET) {
+      await updateTransferStatus(id, "completed", new Date().toISOString());
+    } else {
+      console.log(`[FLW] Transfer ${id} awaiting webhook confirmation`);
+    }
   } catch (err) {
     console.error(`[FLW] Payout failed for transfer ${id}:`, err);
     await updateTransferStatus(id, "failed");
