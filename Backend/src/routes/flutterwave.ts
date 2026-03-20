@@ -1,6 +1,7 @@
 import { Router, Request, Response as ExpressResponse } from "express";
 import { v4 as uuidv4 } from "uuid";
 import { adminAuth } from "../middleware/adminAuth";
+import { updateTransferStatus } from "../store";
 
 const router = Router();
 
@@ -158,9 +159,16 @@ export async function callFlwTransfer(params: {
   amount: number;
   currency: string;
   narration?: string;
+  /**
+   * Stable transfer ID — when provided the Flutterwave reference is derived
+   * as `sassaby-<transferId>` so the request is idempotent on retry.
+   */
+  transferId?: string;
 }): Promise<FlwTransferResult> {
-  const { account_number, account_bank, amount, currency, narration } = params;
-  const reference = uuidv4();
+  const { account_number, account_bank, amount, currency, narration, transferId } = params;
+  // Derive a stable reference when a transferId is available to prevent
+  // duplicate bank payouts if this function is retried after a network error.
+  const reference = transferId ? `sassaby-${transferId}` : uuidv4();
 
   const res = await flwFetch("/transfers", {
     method: "POST",
@@ -207,12 +215,72 @@ router.post("/transfer", adminAuth, async (req: Request, res: ExpressResponse) =
   }
 
   try {
+    // No transferId here — manual admin transfer, so reference is a fresh uuid.
     const result = await callFlwTransfer({ account_number, account_bank, amount, currency, narration });
     return res.status(201).json(result);
   } catch (err) {
     console.error("[FLW] transfer route threw:", err);
     return res.status(500).json({ error: "Failed to initiate transfer. Please try again." });
   }
+});
+
+// ─── POST /api/flutterwave/webhook — receive Flutterwave transfer events ─────────
+//
+// Flutterwave sends a `verif-hash` header that must equal FLW_WEBHOOK_SECRET.
+// On a confirmed/failed transfer with reference "sassaby-<uuid>", update the
+// corresponding transfer record in the DB.
+router.post("/webhook", async (req: Request, res: ExpressResponse) => {
+  const webhookSecret = process.env.FLW_WEBHOOK_SECRET;
+
+  // If no secret is configured Flutterwave webhooks aren’t expected — ignore.
+  if (!webhookSecret) {
+    return res.status(200).json({ received: true });
+  }
+
+  const signature = req.headers["verif-hash"] as string | undefined;
+  if (!signature || signature !== webhookSecret) {
+    console.warn("[FLW WEBHOOK] Invalid or missing verif-hash header");
+    return res.status(401).json({ error: "Unauthorized." });
+  }
+
+  const { event, data } = req.body as {
+    event?: string;
+    data?: { reference?: string; status?: string };
+  };
+
+  // Only care about transfer settlement events.
+  if (typeof event !== "string" || !event.startsWith("transfer.")) {
+    return res.status(200).json({ received: true });
+  }
+
+  const reference = data?.reference ?? "";
+  if (!reference.startsWith("sassaby-")) {
+    return res.status(200).json({ received: true });
+  }
+
+  // Reconstruct the internal transfer ID from the stable reference.
+  const transferId = reference.slice("sassaby-".length);
+  if (!transferId) return res.status(200).json({ received: true });
+
+  const flwStatus = (data?.status ?? "").toUpperCase();
+  let newStatus: "completed" | "failed" | null = null;
+  if (flwStatus === "SUCCESSFUL") newStatus = "completed";
+  else if (flwStatus === "FAILED")   newStatus = "failed";
+
+  if (newStatus) {
+    const updated = await updateTransferStatus(
+      transferId,
+      newStatus,
+      newStatus === "completed" ? new Date().toISOString() : undefined
+    );
+    console.log(
+      updated
+        ? `[FLW WEBHOOK] Transfer ${transferId} → ${newStatus}`
+        : `[FLW WEBHOOK] Transfer ${transferId} not found for webhook update`
+    );
+  }
+
+  return res.status(200).json({ received: true });
 });
 
 export default router;

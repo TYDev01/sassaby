@@ -1,5 +1,3 @@
-// ─── Shared API types ────────────────────────────────────────────────────────
-
 export type TransferStatus = "pending" | "processing" | "completed" | "failed";
 export type SendToken = "STX" | "USDCx" | "BTC";
 export type Currency = "NGN" | "GHS" | "KES";
@@ -15,7 +13,7 @@ export interface Transfer {
   fee: number;
   feeRate: number;
   bank: string;
-  accountNumber: string;
+  depositAddress?: string;
   status: TransferStatus;
   completedAt?: string;
 }
@@ -36,10 +34,10 @@ export interface AdminStats {
 
 // ─── API base URL ────────────────────────────────────────────────────────────
 
-const BASE_URL = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000").replace(/\/$/, "");
+const BASE_URL = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/+$/, "");
 
 /** Next.js origin for server-side proxy routes (admin calls stay server-side). */
-const NEXTJS_ORIGIN = typeof window === "undefined" ? "http://localhost:3000" : "";
+const NEXTJS_ORIGIN = typeof window === "undefined";
 
 // ─── API helpers ─────────────────────────────────────────────────────────────
 
@@ -49,8 +47,9 @@ export async function fetchAdminStats(): Promise<AdminStats> {
   return res.json();
 }
 
-export async function fetchTransfers(): Promise<Transfer[]> {
-  const res = await fetch(`${BASE_URL}/api/transfers`, { cache: "no-store" });
+export async function fetchTransfers(walletAddress: string): Promise<Transfer[]> {
+  const params = new URLSearchParams({ walletAddress });
+  const res = await fetch(`${BASE_URL}/api/transfers?${params}`, { cache: "no-store" });
   if (!res.ok) throw new Error("Failed to fetch transfers");
   const data = await res.json();
   return data.transfers;

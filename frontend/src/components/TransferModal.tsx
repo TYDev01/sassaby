@@ -3,8 +3,10 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
 import { motion, AnimatePresence } from "framer-motion";
-import { Copy, Check, X, Loader2, AlertCircle, SendHorizonal, CheckCircle2, XCircle } from "lucide-react";
-import { SendToken, fetchDepositAddresses, DepositAddress, getTransfer, TransferStatus } from "@/lib/api";
+import { Copy, Check, X, Loader2, AlertCircle, SendHorizonal, CheckCircle2, XCircle, Wallet } from "lucide-react";
+import { SendToken, getTransfer, TransferStatus } from "@/lib/api";
+import { sendSTX, sendUSDCx, toMicroSTX, toMicroUSDC } from "@/lib/stacks";
+import { connect } from "@stacks/connect";
 
 const QRCode = dynamic(() => import("react-qr-code"), { ssr: false });
 
@@ -13,14 +15,18 @@ const QRCode = dynamic(() => import("react-qr-code"), { ssr: false });
 interface TransferModalProps {
   open: boolean;
   onClose: () => void;
-  /** Called once the user confirms they've sent the crypto. */
-  onConfirm: () => void;
-  isConfirming: boolean;
-  /** When set, modal enters monitoring mode and polls this transfer ID. */
+  /** The already-created transfer ID (from POST /api/transfers). */
+  transferId: string;
+  /** Deposit address returned by the server. */
+  depositAddress: string;
+  /** User's STX address — used for wallet-initiated STX/USDCx sends. */
+  senderStxAddress: string;
+  /** Called when the send is confirmed (wallet tx broadcast or BTC manual confirm). */
+  onStartMonitoring: () => void;
+  /** When non-null, the modal polls this transfer ID for status changes. */
   monitoringTransferId: string | null;
   /** Called when monitoring resolves (completed or failed). */
   onMonitoringDone: (status: TransferStatus) => void;
-
   sendAmount: number;
   sendToken: SendToken;
   receiveAmount: number;
@@ -46,8 +52,10 @@ const TOKEN_LABELS: Record<SendToken, string> = {
 export default function TransferModal({
   open,
   onClose,
-  onConfirm,
-  isConfirming,
+  transferId,
+  depositAddress,
+  senderStxAddress,
+  onStartMonitoring,
   monitoringTransferId,
   onMonitoringDone,
   sendAmount,
@@ -55,10 +63,10 @@ export default function TransferModal({
   receiveAmount,
   receiveCurrency,
 }: TransferModalProps) {
-  const [depositAddress, setDepositAddress] = useState<DepositAddress | null>(null);
-  const [addressLoading, setAddressLoading] = useState(false);
-  const [addressError, setAddressError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  // Wallet-send state
+  const [isSending, setIsSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
 
   // Monitoring phase state
   const [monitoringStatus, setMonitoringStatus] = useState<TransferStatus | null>(null);
@@ -96,44 +104,69 @@ export default function TransferModal({
     };
   }, [monitoringTransferId, onMonitoringDone]);
 
-  // ── Fetch deposit address when modal opens ────────────────────────────────
+  // Reset send error when modal opens/token changes
   useEffect(() => {
-    if (!open) return;
-    let cancelled = false;
-    setAddressLoading(true);
-    setAddressError(null);
-    setDepositAddress(null);
-
-    fetchDepositAddresses()
-      .then((data) => {
-        if (cancelled) return;
-        const addr = data.addresses[sendToken];
-        if (addr) {
-          setDepositAddress(addr);
-        } else {
-          setAddressError(
-            `No deposit address configured for ${sendToken}. Please contact support.`
-          );
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setAddressError("Could not load deposit address. Try again.");
-      })
-      .finally(() => {
-        if (!cancelled) setAddressLoading(false);
-      });
-
-    return () => { cancelled = true; };
+    if (open) setSendError(null);
   }, [open, sendToken]);
 
   // ── Copy to clipboard ─────────────────────────────────────────────────────
   const handleCopy = useCallback(() => {
     if (!depositAddress) return;
-    navigator.clipboard.writeText(depositAddress.address).then(() => {
+    navigator.clipboard.writeText(depositAddress).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);
     });
   }, [depositAddress]);
+
+  // ── Wallet-initiated send (STX / USDCx) ──────────────────────────────────
+  const handleSendFromWallet = useCallback(async () => {
+    if (!depositAddress) return;
+    setSendError(null);
+    setIsSending(true);
+    try {
+      // For STX, request() shows the wallet picker + signs in one step — no
+      // pre-connect needed.  For USDCx we need the sender address upfront
+      // (it goes into the function args), so we connect first if not yet done.
+      let sender = senderStxAddress;
+      if (!sender && sendToken !== "STX") {
+        const resp = await connect();
+        const stxEntry = resp?.addresses?.find(
+          (a: { symbol?: string; address: string }) =>
+            !a.symbol || a.symbol.toUpperCase() === "STX"
+        );
+        sender = stxEntry?.address ?? "";
+        if (!sender) throw new Error("cancelled");
+      }
+
+      if (sendToken === "STX") {
+        await sendSTX({
+          senderAddress: sender,
+          recipientAddress: depositAddress,
+          microAmount: toMicroSTX(sendAmount),
+          memo: `Sassaby ${transferId}`.slice(0, 34),
+        });
+      } else {
+        await sendUSDCx({
+          senderAddress: sender,
+          recipientAddress: depositAddress,
+          microAmount: toMicroUSDC(sendAmount),
+        });
+      }
+      onStartMonitoring();
+    } catch (err) {
+      const msg = ((err as Error).message ?? "").toLowerCase();
+      console.error("[Sassaby] sendFromWallet error:", err);
+      // Only swallow genuine user-dismiss events; let node/broadcast errors show.
+      const isCancel = msg.includes("user cancel") || msg.includes("user reject") ||
+        msg.includes("user denied") || msg.includes("request abandoned");
+      if (!isCancel) {
+        const rawMsg = (err as Error).message ?? "Unknown error";
+        setSendError(rawMsg.length < 120 ? rawMsg : "Transaction failed. You can try again or send manually.");
+      }
+    } finally {
+      setIsSending(false);
+    }
+  }, [senderStxAddress, depositAddress, sendToken, sendAmount, transferId, onStartMonitoring]);
 
   // ── Close on Escape ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -145,6 +178,8 @@ export default function TransferModal({
 
   const color = TOKEN_COLORS[sendToken];
   const isMonitoring = !!monitoringTransferId;
+  // BTC can't be sent from a Stacks wallet — always show the wallet button for STX/USDCx.
+  const canSendFromWallet = !isMonitoring && sendToken !== "BTC";
 
   return (
     <AnimatePresence>
@@ -177,7 +212,6 @@ export default function TransferModal({
               className="
                 relative w-full sm:max-w-[480px] bg-[#111111] border border-white/[0.09]
                 rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden pointer-events-auto
-                max-h-[90dvh] overflow-y-auto
               "
               onClick={(e) => e.stopPropagation()}
             >
@@ -281,115 +315,128 @@ export default function TransferModal({
                 </div>
               ) : (
               /* ── Normal deposit view ──────────────────────────────────────── */
-              <div className="px-6 py-6 flex flex-col gap-6">
+              <div className="px-6 py-4 flex flex-col gap-4">
 
                 {/* Transfer summary */}
-                <div className="bg-[#1a1a1a] border border-white/[0.07] rounded-xl p-4 flex flex-col gap-3">
-                  <p className="text-gray-400 text-xs font-medium uppercase tracking-widest">
-                    Transfer Summary
-                  </p>
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-3xl font-bold text-white">{sendAmount}</span>
-                    <span
-                      className="text-lg font-semibold"
-                      style={{ color }}
-                    >
-                      {sendToken}
-                    </span>
-                    <span className="ml-auto text-right">
-                      <span className="block text-gray-500 text-[11px] uppercase tracking-wider leading-none mb-0.5">You receive</span>
-                      <span className="text-white text-sm font-semibold">
-                        {receiveAmount.toLocaleString("en-US", {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })}{" "}
-                        {receiveCurrency}
-                      </span>
+                <div className="bg-[#1a1a1a] border border-white/[0.07] rounded-xl px-4 py-3 flex items-center gap-3">
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="text-2xl font-bold text-white">{sendAmount}</span>
+                    <span className="text-base font-semibold" style={{ color }}>{sendToken}</span>
+                  </div>
+                  <div className="ml-auto text-right">
+                    <span className="block text-gray-500 text-[11px] uppercase tracking-wider leading-none mb-0.5">You receive</span>
+                    <span className="text-white text-sm font-semibold">
+                      {receiveAmount.toLocaleString("en-US", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}{" "}
+                      {receiveCurrency}
                     </span>
                   </div>
-                  <p className="text-gray-500 text-xs">{TOKEN_LABELS[sendToken]}</p>
                 </div>
 
-                {/* Deposit address / QR */}
-                {addressLoading ? (
-                  <div className="flex flex-col items-center gap-3 py-8 text-gray-500">
-                    <Loader2 size={24} className="animate-spin" />
-                    <p className="text-sm">Loading deposit address…</p>
-                  </div>
-                ) : addressError ? (
-                  <div className="flex items-start gap-3 bg-red-500/10 border border-red-500/20 rounded-xl p-4 text-red-400 text-sm">
-                    <AlertCircle size={18} className="mt-0.5 shrink-0" />
-                    <p>{addressError}</p>
-                  </div>
-                ) : depositAddress ? (
-                  <div className="flex flex-col gap-4">
-                    {/* Address label */}
-                    <div>
-                      <p className="text-gray-400 text-xs font-medium uppercase tracking-widest mb-2">
-                        Send exactly <span className="text-white">{sendAmount} {sendToken}</span> to
-                        {depositAddress.label ? (
-                          <span className="text-[#f97316] ml-1">({depositAddress.label})</span>
-                        ) : null}
-                      </p>
-
-                      {/* Address box + copy */}
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1 bg-[#1a1a1a] border border-white/[0.08] rounded-xl px-4 py-3">
-                          <p className="text-white text-[13px] font-mono break-all leading-relaxed">
-                            {depositAddress.address}
-                          </p>
-                        </div>
-                        <button
-                          onClick={handleCopy}
-                          title="Copy address"
-                          className="
-                            shrink-0 w-10 h-10 rounded-xl flex items-center justify-center
-                            border border-white/[0.08] bg-[#1a1a1a]
-                            hover:border-white/20 hover:bg-[#222] transition-all duration-150
-                            cursor-pointer
-                          "
-                        >
-                          {copied
-                            ? <Check size={16} className="text-emerald-400" />
-                            : <Copy size={16} className="text-gray-400" />
-                          }
-                        </button>
+                {/* ── Send-from-wallet button (STX / USDCx only) ──────────── */}
+                {canSendFromWallet && (
+                  <div className="flex flex-col gap-2.5">
+                    {sendError && (
+                      <div className="flex items-start gap-2 bg-red-500/10 border border-red-500/20 rounded-xl p-3 text-red-400 text-xs">
+                        <AlertCircle size={14} className="mt-0.5 shrink-0" />
+                        <p>{sendError}</p>
                       </div>
+                    )}
 
-                      {copied && (
-                        <motion.p
-                          initial={{ opacity: 0, y: -4 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          className="text-emerald-400 text-xs mt-1.5"
-                        >
-                          ✓ Address copied to clipboard
-                        </motion.p>
+                    <motion.button
+                      whileTap={{ scale: 0.97 }}
+                      onClick={handleSendFromWallet}
+                      disabled={isSending || !depositAddress}
+                      className="
+                        w-full py-3.5 rounded-xl text-sm font-semibold
+                        flex items-center justify-center gap-2.5
+                        transition-all duration-200 cursor-pointer
+                        disabled:opacity-40 disabled:cursor-not-allowed
+                      "
+                      style={{
+                        backgroundColor: color,
+                        color: "#fff",
+                        boxShadow: `0 0 24px ${color}33`,
+                      }}
+                    >
+                      {isSending ? (
+                        <>
+                          <Loader2 size={16} className="animate-spin" />
+                          Opening wallet…
+                        </>
+                      ) : (
+                        <>
+                          <Wallet size={16} />
+                          Send {sendAmount} {sendToken} from Wallet
+                        </>
                       )}
+                    </motion.button>
+
+                    {/* Divider */}
+                    <div className="flex items-center gap-3 text-gray-700 text-xs">
+                      <div className="flex-1 h-px bg-white/[0.06]" />
+                      or send manually
+                      <div className="flex-1 h-px bg-white/[0.06]" />
                     </div>
+                  </div>
+                )}
+
+                {/* ── Deposit address ───────────────────────────────────────── */}
+                {depositAddress ? (
+                  <div>
+                    <p className="text-gray-400 text-xs font-medium uppercase tracking-widest mb-2">
+                      Send exactly <span className="text-white">{sendAmount} {sendToken}</span> to
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 bg-[#1a1a1a] border border-white/[0.08] rounded-xl px-3 py-2.5">
+                        <p className="text-white text-[12px] font-mono break-all leading-relaxed">
+                          {depositAddress}
+                        </p>
+                      </div>
+                      <button
+                        onClick={handleCopy}
+                        title="Copy address"
+                        className="
+                          shrink-0 w-9 h-9 rounded-xl flex items-center justify-center
+                          border border-white/[0.08] bg-[#1a1a1a]
+                          hover:border-white/20 hover:bg-[#222] transition-all duration-150
+                          cursor-pointer
+                        "
+                      >
+                        {copied
+                          ? <Check size={15} className="text-emerald-400" />
+                          : <Copy size={15} className="text-gray-400" />
+                        }
+                      </button>
+                    </div>
+                    {copied && (
+                      <motion.p
+                        initial={{ opacity: 0, y: -4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="text-emerald-400 text-xs mt-1"
+                      >
+                        ✓ Copied
+                      </motion.p>
+                    )}
 
                     {/* QR Code */}
-                    <div className="flex flex-col items-center gap-3">
-                      <p className="text-gray-500 text-xs uppercase tracking-wider">
-                        Or scan QR code
-                      </p>
-                      <div
-                        className="p-4 bg-white rounded-2xl shadow-lg relative"
-                        style={{ width: "fit-content" }}
-                      >
+                    <div className="flex justify-center mt-3">
+                      <div className="p-3 bg-white rounded-xl shadow-md relative" style={{ width: "fit-content" }}>
                         <QRCode
-                          value={depositAddress.address}
-                          size={160}
+                          value={depositAddress}
+                          size={128}
                           bgColor="#ffffff"
                           fgColor="#000000"
                           level="H"
                         />
-                        {/* Logo overlay */}
                         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                           <img
                             src="/logo.png"
                             alt="logo"
-                            width={36}
-                            height={36}
+                            width={28}
+                            height={28}
                             className="rounded-md"
                             style={{ background: "#fff", padding: 2 }}
                           />
@@ -403,41 +450,27 @@ export default function TransferModal({
                 <div className="flex items-start gap-2 text-yellow-500/80 text-xs bg-yellow-500/5 border border-yellow-500/15 rounded-xl p-3">
                   <AlertCircle size={14} className="mt-0.5 shrink-0" />
                   <p>
-                    Only send <strong>{sendToken}</strong> to this address. Sending any other
-                    token may result in permanent loss of funds.
-                    Once your transaction is confirmed on-chain the fiat payout
-                    will begin <strong>automatically</strong> — no further action needed.
+                    Only send <strong>{sendToken}</strong> to this address.
+                    Payout begins <strong>automatically</strong> once confirmed on-chain.
                   </p>
                 </div>
 
-                {/* Confirm button */}
+                {/* Manual confirm button — for BTC or wallet-less STX/USDCx sends */}
                 <motion.button
                   whileTap={{ scale: 0.97 }}
-                  onClick={onConfirm}
-                  disabled={isConfirming || !!addressError || addressLoading || !depositAddress}
+                  onClick={onStartMonitoring}
+                  disabled={!depositAddress}
                   className="
-                    w-full py-3.5 rounded-xl text-sm font-semibold
+                    w-full py-3 rounded-xl text-sm font-semibold
                     flex items-center justify-center gap-2
+                    bg-white/[0.06] border border-white/10
+                    hover:bg-white/[0.10] text-white
                     transition-all duration-200 cursor-pointer
                     disabled:opacity-40 disabled:cursor-not-allowed
                   "
-                  style={{
-                    backgroundColor: color,
-                    color: "#fff",
-                    boxShadow: `0 0 24px ${color}33`,
-                  }}
                 >
-                  {isConfirming ? (
-                    <>
-                      <Loader2 size={16} className="animate-spin" />
-                      Submitting transfer…
-                    </>
-                  ) : (
-                    <>
-                      <SendHorizonal size={16} />
-                      I&apos;ve made the deposit
-                    </>
-                  )}
+                  <SendHorizonal size={16} />
+                  I&apos;ve sent the crypto manually
                 </motion.button>
               </div>
               )} {/* end !isMonitoring */}

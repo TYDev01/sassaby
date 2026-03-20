@@ -60,6 +60,15 @@ export async function getAllTransfers(): Promise<Transfer[]> {
   return rows.map(mapRow);
 }
 
+/** Return transfers where senderAddress matches the given wallet address (case-insensitive). */
+export async function getTransfersByWalletAddress(walletAddress: string): Promise<Transfer[]> {
+  const rows = await prisma.transfer.findMany({
+    where: { senderAddress: { equals: walletAddress, mode: "insensitive" } },
+    orderBy: { createdAt: "desc" },
+  });
+  return rows.map(mapRow);
+}
+
 export async function getTransferById(id: string): Promise<Transfer | undefined> {
   const row = await prisma.transfer.findUnique({ where: { id } });
   return row ? mapRow(row) : undefined;

@@ -204,7 +204,6 @@ export default function TransferPage() {
   const [currency, setCurrency] = useState<Currency>("NGN");
   const [selectedBank, setSelectedBank] = useState<Bank | null>(null);
   const [accountNumber, setAccountNumber] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
 
   // ── Live rate state ───────────────────────────────────────────────────────────
 
@@ -258,21 +257,22 @@ export default function TransferPage() {
   // ── Handlers ─────────────────────────────────────────────────────────────────
 
   const [showModal, setShowModal] = useState(false);
-  const [isConfirming, setIsConfirming] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [pendingTransfer, setPendingTransfer] = useState<{
+    id: string;
+    depositAddress: string;
+  } | null>(null);
   const [monitoringTransferId, setMonitoringTransferId] = useState<string | null>(null);
 
-  /** Step 1: open the modal showing where to send crypto */
-  const handleSubmit = useCallback(() => {
+  /**
+   * Step 1: create the transfer record, then open the modal.
+   * Having the record created first means the chain monitor starts
+   * watching immediately; the wallet popup (for STX/USDCx) or
+   * QR-code scan (for BTC) happens inside the modal.
+   */
+  const handleSubmit = useCallback(async () => {
     if (!isReady || isLoading || !selectedBank) return;
-    setShowModal(true);
-  }, [isReady, isLoading, selectedBank]);
-
-  /** Step 2: user clicked "I've sent the crypto — Confirm" inside the modal */
-  const handleConfirm = useCallback(async () => {
-    if (!selectedBank) return;
-    setIsConfirming(true);
-    // Resolve the correct sender address for the selected token so the chain
-    // monitor can cross-check the on-chain source.
+    setIsLoading(true);
     const senderAddress =
       sendToken === "BTC" ? (addresses?.btc ?? "") : (addresses?.stx ?? "");
     try {
@@ -285,18 +285,23 @@ export default function TransferPage() {
         accountNumber,
         senderAddress,
       });
-      console.log("Transfer created:", transfer);
-      setIsConfirming(false);
-      // Switch to monitoring mode — keep modal open, poll for status
-      setMonitoringTransferId(transfer.id);
+      setPendingTransfer({ id: transfer.id, depositAddress: transfer.depositAddress ?? "" });
+      setShowModal(true);
     } catch (err) {
-      console.error("Transfer failed:", err);
-      toast.error("Transfer failed", {
-        description: "Could not submit your transfer. Please try again.",
+      console.error("Transfer creation failed:", err);
+      toast.error("Could not create transfer", {
+        description: "Please try again.",
       });
-      setIsConfirming(false);
+    } finally {
+      setIsLoading(false);
     }
-  }, [parsedAmount, sendToken, currency, selectedBank, accountNumber, addresses]);
+  }, [isReady, isLoading, selectedBank, sendToken, parsedAmount, currency, accountNumber, addresses]);
+
+  /** Step 2: called by the modal once the user confirms the send
+   *  (wallet tx broadcast for STX/USDCx, or manual "I've sent" for BTC). */
+  const handleStartMonitoring = useCallback(() => {
+    if (pendingTransfer) setMonitoringTransferId(pendingTransfer.id);
+  }, [pendingTransfer]);
 
   const handleMonitoringDone = useCallback((status: TransferStatus) => {
     if (status === "completed") {
@@ -313,6 +318,7 @@ export default function TransferPage() {
   const handleModalClose = useCallback(() => {
     setShowModal(false);
     setMonitoringTransferId(null);
+    setPendingTransfer(null);
   }, []);
 
   // ── Render ───────────────────────────────────────────────────────────────────
@@ -323,8 +329,10 @@ export default function TransferPage() {
       <TransferModal
         open={showModal}
         onClose={handleModalClose}
-        onConfirm={handleConfirm}
-        isConfirming={isConfirming}
+        transferId={pendingTransfer?.id ?? ""}
+        depositAddress={pendingTransfer?.depositAddress ?? ""}
+        senderStxAddress={addresses?.stx ?? ""}
+        onStartMonitoring={handleStartMonitoring}
         monitoringTransferId={monitoringTransferId}
         onMonitoringDone={handleMonitoringDone}
         sendAmount={parsedAmount}

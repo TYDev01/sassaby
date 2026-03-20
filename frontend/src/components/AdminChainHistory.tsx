@@ -18,6 +18,12 @@ const ADMIN_STX = process.env.NEXT_PUBLIC_ADMIN_ADDRESS ?? "";
 const HIRO_API = "https://api.hiro.so";
 const MEMPOOL_API = "https://mempool.space/api";
 
+// Exact contract prefix for USDCx — must match Backend STACKS_USDC_CONTRACT env var.
+const USDC_CONTRACT_PREFIX = (
+  process.env.NEXT_PUBLIC_STACKS_USDC_CONTRACT ??
+  "SP3DX3H4FEYZJZ586MFBS25ZW3HZDMEW92260R2PR.Wrapped-USD"
+).toLowerCase();
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type ChainToken = "STX" | "USDCx" | "BTC" | "Token";
@@ -79,7 +85,9 @@ interface MempoolTx {
 
 function classifyFtToken(assetId: string): { token: ChainToken; label: string; decimals: number } {
   const lower = assetId.toLowerCase();
-  if (lower.includes("usdc") || lower.includes("usdcx") || lower.includes("wusdc")) {
+  // Use the same exact prefix the backend uses (STACKS_USDC_CONTRACT) so
+  // classification is consistent across the stack.
+  if (lower.startsWith(USDC_CONTRACT_PREFIX)) {
     return { token: "USDCx", label: "USDCx", decimals: 6 };
   }
   // Extract the human-readable symbol after the last "::"
