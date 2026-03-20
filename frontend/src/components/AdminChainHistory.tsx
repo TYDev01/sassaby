@@ -21,7 +21,7 @@ const MEMPOOL_API = "https://mempool.space/api";
 // Exact contract prefix for USDCx — must match Backend STACKS_USDC_CONTRACT env var.
 const USDC_CONTRACT_PREFIX = (
   process.env.NEXT_PUBLIC_STACKS_USDC_CONTRACT ??
-  "SP3DX3H4FEYZJZ586MFBS25ZW3HZDMEW92260R2PR.Wrapped-USD"
+  "SP120SBRBQJ00MCWS7TM5R8WJNTTKD5K0HFRC2CNE.usdcx"
 ).toLowerCase();
 
 // ─── Types ────────────────────────────────────────────────────────────────────
