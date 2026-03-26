@@ -12,6 +12,7 @@ import {
   Copy,
   Check,
   ArrowUpRight,
+  ExternalLink,
   ArrowLeft,
   RefreshCw,
 } from "lucide-react";
@@ -265,9 +266,9 @@ function TransferHistoryTable({
                 <th className="px-6 py-3 text-left font-medium">Date</th>
                 <th className="px-6 py-3 text-left font-medium">Sent</th>
                 <th className="px-6 py-3 text-left font-medium">USD Value</th>
-                <th className="px-6 py-3 text-left font-medium">Receive</th>
+                <th className="px-6 py-3 text-left font-medium">Amount Received</th>
                 <th className="px-6 py-3 text-left font-medium">Bank</th>
-                <th className="px-6 py-3 text-left font-medium">Fee</th>
+                <th className="px-6 py-3 text-left font-medium">Explorer</th>
                 <th className="px-6 py-3 text-left font-medium">Status</th>
               </tr>
             </thead>
@@ -306,12 +307,20 @@ function TransferHistoryTable({
                       {fmt(t.receiveAmount)} {t.receiveCurrency}
                     </td>
                     <td className="px-6 py-3.5 text-gray-400 text-xs">{t.bank}</td>
-                    <td className="px-6 py-3.5 text-gray-500 text-xs">
-                      ${fmt(t.fee)}
-                      <br />
-                      <span className="text-gray-600">
-                        ({(t.feeRate * 100).toFixed(1)}%)
-                      </span>
+                    <td className="px-6 py-3.5">
+                      {t.claimedTxId ? (
+                        <a
+                          href={`https://explorer.hiro.so/txid/${t.claimedTxId}?chain=mainnet`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 text-xs font-medium text-[#f97316] hover:text-[#ea6c0e] transition-colors"
+                        >
+                          View Tx
+                          <ExternalLink size={11} />
+                        </a>
+                      ) : (
+                        <span className="text-gray-700 text-xs">—</span>
+                      )}
                     </td>
                     <td className="px-6 py-3.5">
                       <StatusBadge status={t.status} />
