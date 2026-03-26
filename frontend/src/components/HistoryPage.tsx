@@ -17,6 +17,8 @@ import {
   ChevronRight,
   ArrowLeft,
   RefreshCw,
+  Search,
+  X,
 } from "lucide-react";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
@@ -219,15 +221,27 @@ function TransferHistoryTable({
   refreshing: boolean;
 }) {
   const [page, setPage] = useState(1);
+  const [dateFilter, setDateFilter] = useState(""); // "YYYY-MM-DD"
 
-  const totalPages = Math.max(1, Math.ceil(transfers.length / PAGE_SIZE));
+  const filtered = useMemo(() => {
+    if (!dateFilter) return transfers;
+    return transfers.filter((t) => {
+      const d = new Date(t.createdAt);
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, "0");
+      const day = String(d.getDate()).padStart(2, "0");
+      return `${y}-${m}-${day}` === dateFilter;
+    });
+  }, [transfers, dateFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const paginated = useMemo(
-    () => transfers.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
-    [transfers, page]
+    () => filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [filtered, page]
   );
 
-  // Reset to page 1 when transfers list changes
-  useEffect(() => { setPage(1); }, [transfers]);
+  // Reset to page 1 when filter or transfers list changes
+  useEffect(() => { setPage(1); }, [transfers, dateFilter]);
 
   if (loading) {
     return (
@@ -247,30 +261,59 @@ function TransferHistoryTable({
       className="bg-[#111111] border border-white/[0.07] rounded-2xl overflow-hidden"
     >
       {/* Table header */}
-      <div className="px-6 py-4 border-b border-white/[0.07] flex items-center justify-between">
+      <div className="px-6 py-4 border-b border-white/[0.07] flex flex-wrap items-center gap-3 justify-between">
         <div className="flex items-center gap-2">
           <Clock size={15} className="text-[#f97316]" />
           <h2 className="text-white font-semibold text-sm">Transfer History</h2>
-          <span className="text-gray-600 text-xs">({transfers.length} records)</span>
+          <span className="text-gray-600 text-xs">
+            ({dateFilter ? `${filtered.length} of ${transfers.length}` : `${transfers.length}`} records)
+          </span>
         </div>
-        <motion.button
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          onClick={onRefresh}
-          disabled={refreshing}
-          className="flex items-center gap-1.5 text-gray-400 hover:text-white text-xs transition-colors cursor-pointer"
-        >
-          <RefreshCw size={12} className={refreshing ? "animate-spin" : ""} />
-          Refresh
-        </motion.button>
+
+        <div className="flex items-center gap-3">
+          {/* Date search */}
+          <div className="relative flex items-center">
+            <Search size={12} className="absolute left-2.5 text-gray-500 pointer-events-none" />
+            <input
+              type="date"
+              value={dateFilter}
+              onChange={(e) => setDateFilter(e.target.value)}
+              className="pl-7 pr-2 py-1.5 rounded-lg bg-white/[0.05] border border-white/[0.07] text-gray-300 text-xs focus:outline-none focus:border-[#f97316]/50 focus:bg-white/[0.08] transition-all [color-scheme:dark] cursor-pointer"
+            />
+            {dateFilter && (
+              <button
+                onClick={() => setDateFilter("")}
+                className="absolute right-2 text-gray-500 hover:text-gray-300 transition-colors cursor-pointer"
+                title="Clear filter"
+              >
+                <X size={11} />
+              </button>
+            )}
+          </div>
+
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={onRefresh}
+            disabled={refreshing}
+            className="flex items-center gap-1.5 text-gray-400 hover:text-white text-xs transition-colors cursor-pointer"
+          >
+            <RefreshCw size={12} className={refreshing ? "animate-spin" : ""} />
+            Refresh
+          </motion.button>
+        </div>
       </div>
 
-      {transfers.length === 0 ? (
+      {filtered.length === 0 ? (
         <div className="px-6 py-16 text-center">
           <ArrowUpRight size={32} className="text-gray-700 mx-auto mb-3" />
-          <p className="text-gray-500 text-sm">No transfers found.</p>
+          <p className="text-gray-500 text-sm">
+            {dateFilter ? "No transfers found for this date." : "No transfers found."}
+          </p>
           <p className="text-gray-600 text-xs mt-1">
-            Make your first transfer from the Transfer tab.
+            {dateFilter
+              ? <button onClick={() => setDateFilter("")} className="text-[#f97316] hover:underline cursor-pointer">Clear filter</button>
+              : "Make your first transfer from the Transfer tab."}
           </p>
         </div>
       ) : (
@@ -349,7 +392,7 @@ function TransferHistoryTable({
       )}
 
       {/* Pagination */}
-      {transfers.length > PAGE_SIZE && (
+      {filtered.length > PAGE_SIZE && (
         <div className="px-6 py-4 border-t border-white/[0.07] flex items-center justify-between">
           <p className="text-gray-600 text-xs">
             Page {page} of {totalPages} &middot; {transfers.length} records
