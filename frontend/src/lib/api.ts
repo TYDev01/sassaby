@@ -14,6 +14,7 @@ export interface Transfer {
   feeRate: number;
   bank: string;
   depositAddress?: string;
+  claimedTxId?: string;
   status: TransferStatus;
   completedAt?: string;
 }
