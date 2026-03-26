@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Wallet,
@@ -13,6 +13,8 @@ import {
   Check,
   ArrowUpRight,
   ExternalLink,
+  ChevronLeft,
+  ChevronRight,
   ArrowLeft,
   RefreshCw,
 } from "lucide-react";
@@ -203,6 +205,8 @@ function WalletHeader() {
 
 // ─── Transfer History Table ───────────────────────────────────────────────────
 
+const PAGE_SIZE = 10;
+
 function TransferHistoryTable({
   transfers,
   loading,
@@ -214,6 +218,17 @@ function TransferHistoryTable({
   onRefresh: () => void;
   refreshing: boolean;
 }) {
+  const [page, setPage] = useState(1);
+
+  const totalPages = Math.max(1, Math.ceil(transfers.length / PAGE_SIZE));
+  const paginated = useMemo(
+    () => transfers.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [transfers, page]
+  );
+
+  // Reset to page 1 when transfers list changes
+  useEffect(() => { setPage(1); }, [transfers]);
+
   if (loading) {
     return (
       <div className="flex flex-col gap-3">
@@ -274,7 +289,7 @@ function TransferHistoryTable({
             </thead>
             <tbody>
               <AnimatePresence>
-                {transfers.map((t, i) => (
+                {paginated.map((t, i) => (
                   <motion.tr
                     key={t.id}
                     initial={{ opacity: 0, x: -8 }}
@@ -330,6 +345,54 @@ function TransferHistoryTable({
               </AnimatePresence>
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Pagination */}
+      {transfers.length > PAGE_SIZE && (
+        <div className="px-6 py-4 border-t border-white/[0.07] flex items-center justify-between">
+          <p className="text-gray-600 text-xs">
+            Page {page} of {totalPages} &middot; {transfers.length} records
+          </p>
+          <div className="flex items-center gap-2">
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.09] border border-white/[0.07] text-gray-400 hover:text-white text-xs transition-all disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+            >
+              <ChevronLeft size={13} />
+              Prev
+            </motion.button>
+
+            {Array.from({ length: totalPages }, (_, idx) => idx + 1).map((p) => (
+              <motion.button
+                key={p}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => setPage(p)}
+                className={`w-7 h-7 rounded-lg text-xs font-medium transition-all cursor-pointer ${
+                  p === page
+                    ? "bg-[#f97316] text-white"
+                    : "bg-white/[0.05] hover:bg-white/[0.09] border border-white/[0.07] text-gray-400 hover:text-white"
+                }`}
+              >
+                {p}
+              </motion.button>
+            ))}
+
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+              className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.09] border border-white/[0.07] text-gray-400 hover:text-white text-xs transition-all disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+            >
+              Next
+              <ChevronRight size={13} />
+            </motion.button>
+          </div>
         </div>
       )}
     </motion.div>
