@@ -7,6 +7,8 @@
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
+    "test": "NODE_ENV=test mocha",
+    "test:coverage": "NODE_ENV=test c8 mocha",
     "migrate": "prisma migrate dev",
     "migrate:deploy": "prisma migrate deploy",
     "studio": "prisma studio"
@@ -22,12 +24,24 @@
     "uuid": "^9.0.1"
   },
   "devDependencies": {
+    "@types/chai": "^5.2.3",
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
+    "@types/mocha": "^10.0.10",
     "@types/node": "^20.14.0",
+    "@types/sinon": "^21.0.0",
+    "@types/supertest": "^7.2.0",
     "@types/uuid": "^9.0.8",
+    "c8": "^11.0.0",
+    "chai": "^6.2.2",
+    "fast-check": "^4.6.0",
+    "mocha": "^11.7.5",
     "prisma": "^5.22.0",
+    "sinon": "^21.0.3",
+    "supertest": "^7.2.2",
+    "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
+    "tsx": "^4.21.0",
     "typescript": "^5.4.5"
   }
 }
