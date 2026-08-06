@@ -2,10 +2,10 @@ import { Router, Request, Response as ExpressResponse } from "express";
 import axios from "axios";
 import { prisma } from "../lib/prisma";
 import { adminAuth } from "../middleware/adminAuth";
+import { getBitgetRate, __resetDeskRateCache, DeskSide, RateSource } from "../lib/deskRate";
 
 const router = Router();
 
-const FLW_V3_BASE = "https://api.flutterwave.com/v3";
 
 // ─── CoinGecko ID map (no API key required) ───────────────────────────────────
 
@@ -44,8 +44,8 @@ export async function getTokenPriceUSD(token: string): Promise<number> {
 
 const SUPPORTED_CURRENCIES = ["NGN", "GHS", "KES"] as const;
 
-// ─── Platform fee (must match transfers.ts) ────────────────────────────────────
-const FEE_RATE = 0.015; // 1.5%
+// No separate platform fee — the margin is the desk's own buy/sell ad spread,
+// which is already embedded in the rate. See routes/orders.ts.
 
 // ─── Admin rate config (PostgreSQL-backed) ─────────────────────────────────────────
 
@@ -125,9 +125,9 @@ router.post("/config", adminAuth, async (req, res: ExpressResponse) => {
   try {
     await Promise.all(updates);
 
-    // Bust FLW rate cache for changed currencies
+    // Bust cached ad snapshots so a manual override takes effect immediately
     const changed = Object.keys({ ...modes, ...manualRates });
-    for (const cur of changed) delete flwRateCache[`USD→${cur}`];
+    if (changed.length > 0) __resetDeskRateCache();
 
     return res.json(await loadRateConfig());
   } catch (err) {
@@ -136,76 +136,59 @@ router.post("/config", adminAuth, async (req, res: ExpressResponse) => {
   }
 });
 
-// ─── Flutterwave rate cache (5-min TTL) ──────────────────────────────────────
+// ─── Desk rate ────────────────────────────────────────────────────────────────
+//
+// The rate comes from the desk's own Bitget P2P ads, with an admin manual rate
+// as the override. There is deliberately NO FX fallback: Flutterwave quotes
+// something close to the interbank rate, and the desk rebalances on the P2P
+// market. Quoting one while settling at the other books a loss on every trade,
+// so an unavailable rate is an error, not an excuse to substitute a wrong one.
 
-interface FlwRateEntry { rate: number; expiresAt: number; }
-const flwRateCache: Record<string, FlwRateEntry> = {};
-
-/**
- * Test-only: drop every memoised price and rate.
- *
- * Both caches are module-level, so without this one suite's fetch survives into
- * the next and silently shadows its stubs — which is exactly how a passing test
- * starts depending on CoinGecko being up.
- */
+/** Test-only: drop memoised token prices and Bitget ad snapshots. */
 export function __resetRateCaches(): void {
   for (const k of Object.keys(priceCache)) delete priceCache[k];
-  for (const k of Object.keys(flwRateCache)) delete flwRateCache[k];
+  __resetDeskRateCache();
 }
 
-export async function getFlwRate(destCurrency: string): Promise<{ rate: number }> {
-  // ── Check admin config in DB ──────────────────────────────────────────────
+export async function getDeskRate(
+  destCurrency: string,
+  side: DeskSide = "sell"
+): Promise<{ rate: number; source: RateSource; advId?: string }> {
+  // 1. Admin manual override wins — it exists precisely to let the operator
+  //    take control when the ad book is thin or being repriced.
   try {
     const row = await prisma.rateConfig.findUnique({ where: { currency: destCurrency } });
     if (row && row.mode === "manual" && Number(row.manualRate) > 0) {
-      return { rate: Number(row.manualRate) };
+      return { rate: Number(row.manualRate), source: "manual" };
     }
   } catch {
-    // DB unavailable — fall through to live rate
+    // DB unavailable — fall through to the ad book.
   }
 
-  const cacheKey = `USD→${destCurrency}`;
-  const cached = flwRateCache[cacheKey];
-  if (cached && Date.now() < cached.expiresAt) return { rate: cached.rate };
-
-  try {
-    const secretKey = process.env.FLW_SECRET_KEY;
-    if (!secretKey) throw new Error("FLW_SECRET_KEY is not set.");
-    const { data: json } = await axios.get<{
-      status: string;
-      data?: { rate: number; source: { amount: number }; destination: { amount: number } };
-    }>(
-      `${FLW_V3_BASE}/transfers/rates?amount=1&source_currency=USD&destination_currency=${encodeURIComponent(destCurrency)}`,
-      { headers: { Authorization: `Bearer ${secretKey}` }, timeout: 10_000 }
-    );
-    // data.rate = USD per 1 dest unit; invert to get dest units per 1 USD
-    const rawRate = json.data?.rate;
-    if (rawRate && rawRate > 0) {
-      const rate = 1 / rawRate;
-      flwRateCache[cacheKey] = { rate, expiresAt: Date.now() + 5 * 60_000 };
-      return { rate };
-    }
-  } catch (err) {
-    console.warn(`[RATES] FLW rate fetch failed for ${destCurrency}:`, (err as Error).message);
-  }
+  // 2. The desk's own P2P ad for this side of the book.
+  const fromAds = await getBitgetRate(destCurrency, side);
+  if (fromAds) return fromAds;
 
   throw new Error(
-    `No rate available for ${destCurrency}. ` +
-    `Set a manual rate in the admin dashboard or ensure Flutterwave API is reachable.`
+    `No rate available for ${destCurrency}. Publish a Bitget P2P ad for it, ` +
+      `or set a manual rate in the admin dashboard.`
   );
 }
-
-// ─── GET /api/rates?token=STX&amount=10&currency=NGN ─────────────────────────
 
 export interface RateQuoteResponse {
   token: string;
   tokenPriceUSD: number;
   usdAmount: number;
+  /** Fiat units per USD, from the desk's own book. */
+  deskRate: number;
+  /** Retained under the old name so existing clients keep working. */
   flwRate: number;
   receiveAmount: number;
   currency: string;
-  rateSource: "flutterwave" | "manual";
+  rateSource: RateSource;
   rateMode: RateMode;
+  /** The ad the rate came from, when it came from one. */
+  advId?: string;
 }
 
 router.get("/", async (req: Request, res: ExpressResponse) => {
@@ -221,23 +204,32 @@ router.get("/", async (req: Request, res: ExpressResponse) => {
     return res.status(400).json({ error: "amount must be a positive number." });
 
   try {
-    const [tokenPriceUSD, { rate: flwRate }] = await Promise.all([
+    // `side` lets a caller price the correct half of the book; defaults to the
+    // sell side so a bare ticker query still returns something meaningful.
+    const side: DeskSide = (req.query.side as DeskSide) === "buy" ? "buy" : "sell";
+
+    const [tokenPriceUSD, desk] = await Promise.all([
       getTokenPriceUSD(token),
-      getFlwRate(currency),
+      getDeskRate(currency, side),
     ]);
 
     const usdAmount = parsedAmount * tokenPriceUSD;
-    const fee = usdAmount * FEE_RATE;
-    const receiveAmount = (usdAmount - fee) * flwRate;
+    const receiveAmount = usdAmount * desk.rate;
 
-    // Read mode from DB to annotate the response
     const configRow = await prisma.rateConfig.findUnique({ where: { currency } }).catch(() => null);
     const mode: RateMode = (configRow?.mode as RateMode) ?? "api";
 
     return res.json({
-      token, tokenPriceUSD, usdAmount, flwRate, receiveAmount, currency,
-      rateSource: mode === "manual" ? "manual" : "flutterwave",
+      token,
+      tokenPriceUSD,
+      usdAmount,
+      deskRate: desk.rate,
+      flwRate: desk.rate,
+      receiveAmount,
+      currency,
+      rateSource: desk.source,
       rateMode: mode,
+      advId: desk.advId,
     } satisfies RateQuoteResponse);
   } catch (err) {
     console.error("[RATES]", err);

@@ -1,13 +1,11 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { User } from "lucide-react";
+import { User, LogOut } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useWallet } from "@/lib/wallet";
-
-const ADMIN_ADDRESS = process.env.NEXT_PUBLIC_ADMIN_ADDRESS ?? "";
+import { useAuth } from "@/lib/auth";
 
 // ─── Logo ─────────────────────────────────────────────────────────────────────
 
@@ -31,14 +29,22 @@ function StacksBridgeLogo() {
 export default function Navbar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { addresses } = useWallet();
+  const { user, loading, signOut } = useAuth();
 
   const isAdmin = pathname === "/admin";
-  const isAdminWallet =
-    !!addresses?.stx && addresses.stx === ADMIN_ADDRESS;
 
   function handleProfileClick() {
-    router.push(isAdminWallet ? "/admin" : "/history");
+    // Signed out, send them to sign-in and bring them back to where they were.
+    if (!user) {
+      router.push(`/signin?next=${encodeURIComponent(pathname)}`);
+      return;
+    }
+    router.push("/history");
+  }
+
+  function handleSignOut() {
+    signOut();
+    router.push("/");
   }
 
   return (
@@ -71,20 +77,44 @@ export default function Navbar() {
         {/* Spacer to push icons to the right */}
         <div className="flex-1" />
 
-        {/* Profile icon — routes to /admin or /history based on wallet */}
-        <motion.button
-          whileHover={{ scale: 1.08 }}
-          whileTap={{ scale: 0.95 }}
-          onClick={handleProfileClick}
-          aria-label={isAdminWallet ? "Admin dashboard" : "Transaction history"}
-          className={`w-9 h-9 flex items-center justify-center rounded-full transition-colors duration-200 cursor-pointer ${
-            isAdmin
-              ? "text-[#f97316] bg-[#f97316]/10"
-              : "text-gray-400 hover:text-white hover:bg-white/10"
-          }`}
-        >
-          <User size={18} />
-        </motion.button>
+        <div className="flex items-center gap-1.5">
+          {/* Don't flash "Sign in" before the session restore settles. */}
+          {!loading && !user && (
+            <Link
+              href={`/signin?next=${encodeURIComponent(pathname)}`}
+              className="px-3.5 py-1.5 rounded-full text-sm font-medium text-gray-300 hover:text-white hover:bg-white/10 transition-colors"
+            >
+              Sign in
+            </Link>
+          )}
+
+          <motion.button
+            whileHover={{ scale: 1.08 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={handleProfileClick}
+            aria-label={user ? "Your orders" : "Sign in"}
+            title={user?.email}
+            className={`w-9 h-9 flex items-center justify-center rounded-full transition-colors duration-200 cursor-pointer ${
+              isAdmin
+                ? "text-[#f97316] bg-[#f97316]/10"
+                : "text-gray-400 hover:text-white hover:bg-white/10"
+            }`}
+          >
+            <User size={18} />
+          </motion.button>
+
+          {!loading && user && (
+            <motion.button
+              whileHover={{ scale: 1.08 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={handleSignOut}
+              aria-label="Sign out"
+              className="w-9 h-9 flex items-center justify-center rounded-full text-gray-400 hover:text-white hover:bg-white/10 transition-colors duration-200 cursor-pointer"
+            >
+              <LogOut size={17} />
+            </motion.button>
+          )}
+        </div>
       </motion.header>
     </div>
   );

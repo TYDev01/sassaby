@@ -2,26 +2,37 @@
 
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowUpDown, Zap, SendHorizonal, Loader2 } from "lucide-react";
+import { ArrowUpDown, Zap, SendHorizonal, Loader2, Wallet } from "lucide-react";
+import Link from "next/link";
 
 import Navbar from "@/components/Navbar";
-import TransferCard, { SendToken } from "@/components/TransferCard";
+import TransferCard, { SelectedAsset } from "@/components/TransferCard";
 import ReceiveCard from "@/components/ReceiveCard";
 import BankSelector, { Bank } from "@/components/BankSelector";
+import OrderTracker from "@/components/TransferModal";
 
-import { createTransfer, fetchRates, RateQuote, TransferStatus } from "@/lib/api";
-import TransferModal from "@/components/TransferModal";
+import {
+  createOrder,
+  fetchRates,
+  fetchOpenOrder,
+  fetchDepositAddresses,
+  ApiError,
+  AssetSpec,
+  Order,
+  OrderDirection,
+  RateQuote,
+} from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import { toast } from "sonner";
-import { useWallet } from "@/lib/wallet";
 
 type Currency = "NGN" | "GHS" | "KES";
 
-
-
+/** Fallback until the registry loads, so the first paint isn't empty. */
+const DEFAULT_ASSET: SelectedAsset = { token: "STX", chain: "stacks" };
 
 // ─── Hero Heading ─────────────────────────────────────────────────────────────
 
-const CRYPTO_WORDS = ["STX", "USDCx", "BTC"];
+const CRYPTO_WORDS = ["STX", "USDT", "SOL", "BTC"];
 const FIAT_WORDS = ["NGN", "GHS", "KES"];
 
 function CyclingWord({ words, delay = 0 }: { words: string[]; delay?: number }) {
@@ -79,14 +90,48 @@ function HeroHeading() {
       className="text-center mb-5"
     >
       <h1 className="text-3xl sm:text-5xl font-bold text-white leading-tight tracking-tight">
-        Bridge between{" "}
-        <CyclingWord words={CRYPTO_WORDS} />
+        Bridge between <CyclingWord words={CRYPTO_WORDS} />
         <br />
-        and{" "}
-        <CyclingWord words={FIAT_WORDS} delay={1000} />{" "}
-        accounts
+        and <CyclingWord words={FIAT_WORDS} delay={1000} /> accounts
       </h1>
     </motion.div>
+  );
+}
+
+// ─── Direction Toggle ─────────────────────────────────────────────────────────
+
+function DirectionToggle({
+  direction,
+  onChange,
+  disabled,
+}: {
+  direction: OrderDirection;
+  onChange: (d: OrderDirection) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="flex justify-center mb-4">
+      <div className="inline-flex bg-[#111] border border-white/10 rounded-full p-1 gap-1">
+        {(["sell", "buy"] as OrderDirection[]).map((d) => (
+          <button
+            key={d}
+            onClick={() => !disabled && onChange(d)}
+            disabled={disabled}
+            className={`
+              px-5 py-1.5 rounded-full text-sm font-semibold transition-colors duration-200
+              disabled:cursor-not-allowed
+              ${
+                direction === d
+                  ? "bg-[#f97316] text-white"
+                  : "text-gray-400 hover:text-white"
+              }
+            `}
+          >
+            {d === "sell" ? "Sell crypto" : "Buy crypto"}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -124,8 +169,8 @@ function QuickTransferBanner() {
       <Zap size={12} className="text-[#f97316] shrink-0" />
       <p className="text-sm text-gray-400 text-center">
         Quick transfers up to{" "}
-        <span className="text-[#f97316] font-medium">$10,000</span>{" "}
-        - no signup required!
+        <span className="text-[#f97316] font-medium">$10,000</span> — verified by hand,
+        usually within minutes.
       </p>
     </motion.div>
   );
@@ -136,22 +181,15 @@ function QuickTransferBanner() {
 function SubmitButton({
   disabled,
   loading,
-  amount,
-  token,
+  label,
   onClick,
 }: {
   disabled: boolean;
   loading: boolean;
-  amount: string;
-  token: SendToken;
+  label: string;
   onClick: () => void;
 }) {
   const isBlocked = disabled || loading;
-  const label = loading
-    ? "Processing..."
-    : disabled
-    ? "Enter an amount"
-    : `Transfer ${amount} ${token}`;
 
   return (
     <motion.button
@@ -196,215 +234,336 @@ function SubmitButton({
 // ─── Transfer Page ─────────────────────────────────────────────────────────────
 
 export default function TransferPage() {
-  const { addresses } = useWallet();
+  const { user, loading: authLoading } = useAuth();
+
+  // ── Asset registry ──────────────────────────────────────────────────────────
+  const [assets, setAssets] = useState<AssetSpec[]>([]);
+  const [asset, setAsset] = useState<SelectedAsset>(DEFAULT_ASSET);
+
+  useEffect(() => {
+    fetchDepositAddresses()
+      .then((data) => {
+        const list = data.supported ?? [];
+        setAssets(list);
+        if (list.length > 0) {
+          setAsset((cur) =>
+            list.some((a) => a.token === cur.token && a.chain === cur.chain)
+              ? cur
+              : { token: list[0].token, chain: list[0].chain }
+          );
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // ── Form state ──────────────────────────────────────────────────────────────
+  const [direction, setDirection] = useState<OrderDirection>("sell");
   const [sendAmount, setSendAmount] = useState("");
-  const [sendToken, setSendToken] = useState<SendToken>("STX");
   const [currency, setCurrency] = useState<Currency>("NGN");
   const [selectedBank, setSelectedBank] = useState<Bank | null>(null);
   const [accountNumber, setAccountNumber] = useState("");
+  const [destinationAddress, setDestinationAddress] = useState("");
 
-  // ── Live rate state ───────────────────────────────────────────────────────────
+  // ── The caller's single live order ──────────────────────────────────────────
+  // One open order per user is enforced server-side, so surface any existing one
+  // rather than letting them fill in a form that will 409.
+  const [openOrder, setOpenOrder] = useState<Order | null>(null);
+  const [checkingOpen, setCheckingOpen] = useState(false);
 
+  const refreshOpenOrder = useCallback(async () => {
+    if (!user) {
+      setOpenOrder(null);
+      return;
+    }
+    setCheckingOpen(true);
+    try {
+      setOpenOrder(await fetchOpenOrder());
+    } catch {
+      // Non-fatal — the server still rejects a duplicate on submit.
+    } finally {
+      setCheckingOpen(false);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    refreshOpenOrder();
+  }, [refreshOpenOrder]);
+
+  // ── Live rate ───────────────────────────────────────────────────────────────
   const parsedAmount = parseFloat(sendAmount) || 0;
   const [rateQuote, setRateQuote] = useState<RateQuote | null>(null);
   const [ratesLoading, setRatesLoading] = useState(false);
-  const [baseFlwRate, setBaseFlwRate] = useState<number | null>(null);
+  const [baseRate, setBaseRate] = useState<number | null>(null);
   const rateDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     setRateQuote(null);
-    if (parsedAmount <= 0) { setRatesLoading(false); return; }
+    if (parsedAmount <= 0) {
+      setRatesLoading(false);
+      return;
+    }
     setRatesLoading(true);
     if (rateDebounceRef.current) clearTimeout(rateDebounceRef.current);
     rateDebounceRef.current = setTimeout(async () => {
       try {
-        const quote = await fetchRates(sendToken, parsedAmount, currency);
-        setRateQuote(quote);
-      } catch { /* logged server-side */ }
-      finally { setRatesLoading(false); }
+        setRateQuote(await fetchRates(asset.token, parsedAmount, currency, direction));
+      } catch {
+        /* logged server-side */
+      } finally {
+        setRatesLoading(false);
+      }
     }, 500);
-    return () => { if (rateDebounceRef.current) clearTimeout(rateDebounceRef.current); };
-  }, [parsedAmount, sendToken, currency]);
+    return () => {
+      if (rateDebounceRef.current) clearTimeout(rateDebounceRef.current);
+    };
+  }, [parsedAmount, asset.token, currency, direction]);
 
-  // Fetch base FLW rate on mount and whenever token/currency changes (drives minimum display)
   useEffect(() => {
-    setBaseFlwRate(null);
+    setBaseRate(null);
     let cancelled = false;
-    fetchRates(sendToken, 1, currency)
-      .then((quote) => { if (!cancelled) setBaseFlwRate(quote.flwRate); })
+    fetchRates(asset.token, 1, currency, direction)
+      .then((q) => {
+        if (!cancelled) setBaseRate(q.flwRate);
+      })
       .catch(() => {});
-    return () => { cancelled = true; };
-  }, [sendToken, currency]);
+    return () => {
+      cancelled = true;
+    };
+  }, [asset.token, currency, direction]);
 
   const usdEquivalent = rateQuote?.usdAmount ?? 0;
   const receiveAmount = rateQuote?.receiveAmount ?? 0;
-  const minReceive = baseFlwRate;
   const rateInfo = rateQuote
-    ? { tokenPrice: rateQuote.tokenPriceUSD, flwRate: rateQuote.flwRate, token: sendToken }
+    ? { tokenPrice: rateQuote.tokenPriceUSD, flwRate: rateQuote.flwRate, token: asset.token }
     : null;
 
-  /** Form is valid when all required fields are filled */
-  const isReady = useMemo(
-    () =>
-      parsedAmount > 0 &&
-      selectedBank !== null &&
-      accountNumber.length >= 10,
-    [parsedAmount, selectedBank, accountNumber]
-  );
+  const isSell = direction === "sell";
 
-  // ── Handlers ─────────────────────────────────────────────────────────────────
+  /** Buying releases crypto irreversibly, so the payer name must be on file. */
+  const missingBankName = !isSell && !!user && !user.bankAccountName;
 
-  const [showModal, setShowModal] = useState(false);
+  const isReady = useMemo(() => {
+    if (parsedAmount <= 0) return false;
+    if (isSell) return selectedBank !== null && accountNumber.length >= 10;
+    return destinationAddress.trim().length >= 8 && !missingBankName;
+  }, [parsedAmount, isSell, selectedBank, accountNumber, destinationAddress, missingBankName]);
+
+  // ── Submit ──────────────────────────────────────────────────────────────────
+  const [showTracker, setShowTracker] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [pendingTransfer, setPendingTransfer] = useState<{
-    id: string;
-    depositAddress: string;
-  } | null>(null);
-  const [monitoringTransferId, setMonitoringTransferId] = useState<string | null>(null);
+  const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
 
-  /**
-   * Step 1: create the transfer record, then open the modal.
-   * Having the record created first means the chain monitor starts
-   * watching immediately; the wallet popup (for STX/USDCx) or
-   * QR-code scan (for BTC) happens inside the modal.
-   */
   const handleSubmit = useCallback(async () => {
-    if (!isReady || isLoading || !selectedBank) return;
+    if (!isReady || isLoading) return;
     setIsLoading(true);
-    const senderAddress =
-      sendToken === "BTC" ? (addresses?.btc ?? "") : (addresses?.stx ?? "");
     try {
-      const transfer = await createTransfer({
+      const created = await createOrder({
+        direction,
         sendAmount: parsedAmount,
-        sendToken,
+        sendToken: asset.token,
+        chain: asset.chain,
         receiveCurrency: currency,
-        bank: selectedBank.name,
-        bankCode: selectedBank.code,
-        accountNumber,
-        senderAddress,
+        ...(isSell
+          ? {
+              bank: selectedBank!.name,
+              bankCode: selectedBank!.code,
+              accountNumber,
+            }
+          : { destinationAddress: destinationAddress.trim() }),
       });
-      setPendingTransfer({ id: transfer.id, depositAddress: transfer.depositAddress ?? "" });
-      setShowModal(true);
+      setActiveOrderId(created.id);
+      setShowTracker(true);
+      await refreshOpenOrder();
     } catch (err) {
-      console.error("Transfer creation failed:", err);
-      toast.error("Could not create transfer", {
-        description: "Please try again.",
-      });
+      if (err instanceof ApiError && err.status === 409) {
+        // Lost the race, or already had one open — show it instead of erroring.
+        toast.error("You already have an order in progress");
+        await refreshOpenOrder();
+      } else {
+        toast.error("Could not create order", {
+          description: err instanceof ApiError ? err.message : "Please try again.",
+        });
+      }
     } finally {
       setIsLoading(false);
     }
-  }, [isReady, isLoading, selectedBank, sendToken, parsedAmount, currency, accountNumber, addresses]);
+  }, [
+    isReady,
+    isLoading,
+    direction,
+    parsedAmount,
+    asset,
+    currency,
+    isSell,
+    selectedBank,
+    accountNumber,
+    destinationAddress,
+    refreshOpenOrder,
+  ]);
 
-  /** Step 2: called by the modal once the user confirms the send
-   *  (wallet tx broadcast for STX/USDCx, or manual "I've sent" for BTC). */
-  const handleStartMonitoring = useCallback(() => {
-    if (pendingTransfer) setMonitoringTransferId(pendingTransfer.id);
-  }, [pendingTransfer]);
+  const handleTrackerClose = useCallback(() => {
+    setShowTracker(false);
+    setActiveOrderId(null);
+    refreshOpenOrder();
+  }, [refreshOpenOrder]);
 
-  const handleMonitoringDone = useCallback((status: TransferStatus) => {
-    if (status === "completed") {
-      toast.success("Payout sent!", {
-        description: `Your ${currency} has been sent to your bank account.`,
-      });
-    } else {
-      toast.error("Transfer failed", {
-        description: "The payout could not be completed. Please contact support.",
-      });
-    }
-  }, [currency]);
+  const submitLabel = isLoading
+    ? "Processing..."
+    : parsedAmount <= 0
+    ? "Enter an amount"
+    : missingBankName
+    ? "Add your bank account name first"
+    : !isReady
+    ? isSell
+      ? "Add your bank details"
+      : "Add your wallet address"
+    : isSell
+    ? `Sell ${sendAmount} ${asset.token}`
+    : `Buy ${sendAmount} ${asset.token}`;
 
-  const handleModalClose = useCallback(() => {
-    setShowModal(false);
-    setMonitoringTransferId(null);
-    setPendingTransfer(null);
-  }, []);
-
-  // ── Render ───────────────────────────────────────────────────────────────────
+  // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
     <div className="relative z-10 min-h-screen sm:h-screen sm:overflow-hidden flex flex-col">
-      {/* Transfer confirmation modal */}
-      <TransferModal
-        open={showModal}
-        onClose={handleModalClose}
-        transferId={pendingTransfer?.id ?? ""}
-        depositAddress={pendingTransfer?.depositAddress ?? ""}
-        senderStxAddress={addresses?.stx ?? ""}
-        onStartMonitoring={handleStartMonitoring}
-        monitoringTransferId={monitoringTransferId}
-        onMonitoringDone={handleMonitoringDone}
-        sendAmount={parsedAmount}
-        sendToken={sendToken}
-        receiveAmount={receiveAmount}
-        receiveCurrency={currency}
-      />
+      {activeOrderId && (
+        <OrderTracker
+          open={showTracker}
+          orderId={activeOrderId}
+          onClose={handleTrackerClose}
+        />
+      )}
 
-      {/* Navigation */}
       <Navbar />
 
-      {/* Main content */}
       <main className="flex-1 flex flex-col items-center sm:justify-center px-3 sm:px-4 pt-24 sm:pt-20 pb-24 sm:pb-2">
-        {/* Hero */}
         <HeroHeading />
 
-        {/* Card stack */}
         <div className="w-full max-w-[600px] flex flex-col gap-0">
-          {/* Send / Receive cards */}
-          <div className="flex flex-col">
-            <div className="relative z-20">
-              <TransferCard
-                value={sendAmount}
-                onChange={setSendAmount}
-                usdEquivalent={usdEquivalent}
-                token={sendToken}
-                onTokenChange={setSendToken}
+          {/* An open order blocks a new one — show it rather than a dead form. */}
+          {openOrder ? (
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-[#111] border border-[#f97316]/25 rounded-2xl px-6 py-6 flex flex-col gap-3 text-center"
+            >
+              <p className="text-white font-semibold">You have an order in progress</p>
+              <p className="text-gray-400 text-sm">
+                {openOrder.direction === "sell" ? "Selling" : "Buying"}{" "}
+                {openOrder.sendAmount} {openOrder.sendToken} on {openOrder.chain}. Finish
+                or cancel it before starting another.
+              </p>
+              <button
+                onClick={() => {
+                  setActiveOrderId(openOrder.id);
+                  setShowTracker(true);
+                }}
+                className="mt-1 mx-auto px-6 py-2.5 rounded-xl bg-[#f97316] hover:bg-[#ea6c0e] text-white text-sm font-semibold transition-colors cursor-pointer"
+              >
+                View order
+              </button>
+            </motion.div>
+          ) : (
+            <>
+              <DirectionToggle
+                direction={direction}
+                onChange={setDirection}
+                disabled={isLoading}
               />
-            </div>
 
-            <ArrowDivider />
+              <div className="flex flex-col">
+                <div className="relative z-20">
+                  <TransferCard
+                    label={isSell ? "You'll send" : "You'll receive"}
+                    value={sendAmount}
+                    onChange={setSendAmount}
+                    usdEquivalent={usdEquivalent}
+                    assets={assets}
+                    selected={asset}
+                    onAssetChange={setAsset}
+                  />
+                </div>
 
-            <div className="relative z-10">
-              <ReceiveCard
-                amount={receiveAmount}
-                minimum={minReceive}
-                currency={currency}
-                onCurrencyChange={(c) => setCurrency(c as Currency)}
-                isLoading={ratesLoading}
-                rateInfo={rateInfo}
-              />
-            </div>
-          </div>
+                <ArrowDivider />
 
-          {/* Spacer */}
-          <div className="h-2" />
+                <div className="relative z-10">
+                  <ReceiveCard
+                    amount={receiveAmount}
+                    minimum={baseRate}
+                    currency={currency}
+                    onCurrencyChange={(c) => setCurrency(c as Currency)}
+                    isLoading={ratesLoading}
+                    rateInfo={rateInfo}
+                  />
+                </div>
+              </div>
 
-          {/* Bank + account number row */}
-          <BankSelector
-            selected={selectedBank}
-            onSelect={setSelectedBank}
-            accountNumber={accountNumber}
-            onAccountNumberChange={setAccountNumber}
-          />
+              <div className="h-2" />
 
-          {/* Spacer */}
-          <div className="h-2" />
+              {isSell ? (
+                <BankSelector
+                  selected={selectedBank}
+                  onSelect={setSelectedBank}
+                  accountNumber={accountNumber}
+                  onAccountNumberChange={setAccountNumber}
+                />
+              ) : (
+                <div className="flex flex-col gap-2">
+                  <div className="relative">
+                    <Wallet
+                      size={16}
+                      className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500"
+                    />
+                    <input
+                      type="text"
+                      value={destinationAddress}
+                      onChange={(e) => setDestinationAddress(e.target.value)}
+                      placeholder={`Your ${asset.token} wallet address`}
+                      className="
+                        w-full rounded-xl bg-[#111] border border-white/10
+                        pl-10 pr-3.5 py-3.5 text-sm text-white font-mono
+                        placeholder:text-gray-600 placeholder:font-sans
+                        focus:outline-none focus:border-[#f97316]/60 transition-colors
+                      "
+                    />
+                  </div>
+                  {/* Releases are irreversible and network-specific — a right
+                      address on the wrong chain loses the funds. */}
+                  <p className="text-xs text-gray-600 px-1">
+                    Must be a{" "}
+                    {assets.find((a) => a.token === asset.token && a.chain === asset.chain)
+                      ?.network ?? asset.chain}{" "}
+                    address. Releases can&apos;t be reversed.
+                  </p>
+                </div>
+              )}
 
-          {/* Quick transfer info */}
-          <QuickTransferBanner />
+              {missingBankName && (
+                <p className="text-xs text-amber-400 px-1 mt-2">
+                  Add the name on your bank account in your profile — we match every
+                  payment against it before releasing.
+                </p>
+              )}
 
-          {/* Spacer */}
-          <div className="h-1" />
+              <div className="h-2" />
+              <QuickTransferBanner />
+              <div className="h-1" />
 
-          {/* Submit */}
-          <SubmitButton
-            disabled={!isReady}
-            loading={isLoading}
-            amount={sendAmount}
-            token={sendToken}
-            onClick={handleSubmit}
-          />
+              {authLoading ? null : user ? (
+                <SubmitButton
+                  disabled={!isReady || checkingOpen}
+                  loading={isLoading}
+                  label={submitLabel}
+                  onClick={handleSubmit}
+                />
+              ) : (
+                <Link href="/signin?next=/">
+                  <div className="w-full rounded-xl px-4 py-4 text-base font-semibold text-center bg-[#f97316] text-white hover:bg-[#ea6c0e] shadow-lg shadow-[#f97316]/20 cursor-pointer transition-colors">
+                    Sign in to trade
+                  </div>
+                </Link>
+              )}
+            </>
+          )}
         </div>
       </main>
     </div>
