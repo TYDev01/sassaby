@@ -4,9 +4,10 @@ import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import dotenv from "dotenv";
 
-import transfersRouter from "./routes/transfers";
+import ordersRouter from "./routes/orders";
+import authRouter from "./routes/auth";
 import adminRouter from "./routes/admin";
-import flutterwaveRouter from "./routes/flutterwave";
+import adminOrdersRouter from "./routes/adminOrders";
 import ratesRouter from "./routes/rates";
 import depositAddressesRouter from "./routes/depositAddresses";
 
@@ -58,6 +59,17 @@ const transferLimiter = rateLimit({
   message: { error: "Too many transfer requests. Please wait before trying again." },
 });
 
+// Tighter than the public limiter: /api/auth/login is the one endpoint where a
+// high request rate is almost always someone guessing passwords.
+const authLimiter = rateLimit({
+  windowMs: 15 * 60_000,
+  max: 20,
+  skip: () => process.env.NODE_ENV === "test",
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many authentication attempts. Please try again later." },
+});
+
 const adminLimiter = rateLimit({
   windowMs: 60_000,
   max: 30,
@@ -72,9 +84,10 @@ app.get("/health", (_req, res) => {
 });
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
-app.use("/api/transfers", transferLimiter, transfersRouter);
+app.use("/api/auth", authLimiter, authRouter);
+app.use("/api/orders", transferLimiter, ordersRouter);
+app.use("/api/admin/orders", adminLimiter, adminOrdersRouter);
 app.use("/api/admin", adminLimiter, adminRouter);
-app.use("/api/flutterwave", publicLimiter, flutterwaveRouter);
 app.use("/api/rates", publicLimiter, ratesRouter);
 app.use("/api/deposit-addresses", publicLimiter, depositAddressesRouter);
 
