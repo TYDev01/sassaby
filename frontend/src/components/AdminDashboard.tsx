@@ -802,7 +802,7 @@ export default function AdminDashboard() {
   // ── Auth gates ────────────────────────────────────────────────────────────
   if (!connected) {
     return (
-      <div className="min-h-screen bg-[#0a0a0a] flex flex-col">
+      <div className="relative z-10 min-h-screen flex flex-col">
         <Navbar />
         <main className="flex-1 flex flex-col items-center justify-center">
           <ConnectGate />
@@ -813,7 +813,7 @@ export default function AdminDashboard() {
 
   if (isWrongAddress) {
     return (
-      <div className="min-h-screen bg-[#0a0a0a] flex flex-col">
+      <div className="relative z-10 min-h-screen flex flex-col">
         <Navbar />
         <main className="flex-1 flex flex-col items-center justify-center">
           <UnauthorisedGate />
@@ -823,7 +823,7 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] flex flex-col">
+    <div className="relative z-10 min-h-screen flex flex-col">
       <Navbar />
 
       <main className="flex-1 px-4 sm:px-6 pt-28 sm:pt-32 pb-20 max-w-[1280px] mx-auto w-full">

@@ -1,6 +1,6 @@
 import axios from "axios";
-import { getAllTransfers, updateTransferStatus, claimTransferTxId, Transfer } from "../store";
-import { callFlwTransfer } from "../routes/flutterwave";
+import { getAllTransfers, claimTransferTxId, Order } from "../store";
+import { notifyDepositConfirmed } from "./notify";
 
 // ─── Configuration ────────────────────────────────────────────────────────────
 
@@ -11,8 +11,8 @@ const BTC_API = "https://blockstream.info/api";
 /** How often to poll (ms). */
 const POLL_INTERVAL_MS = 20_000;
 
-/** Expire pending transfers that haven't confirmed within this window (ms). */
-const TRANSFER_TIMEOUT_MS = 30 * 60 * 1_000; // 30 minutes
+// Order expiry lives in lib/expirySweep.ts — it must cover fiat-side orders that
+// this monitor never looks at.
 
 const USDC_CONTRACT_PREFIX = (
   process.env.STACKS_USDC_CONTRACT ??
@@ -171,22 +171,18 @@ async function checkBtcDeposit(opts: {
 // ─── Single-transfer handler ──────────────────────────────────────────────────
 
 async function checkTransfer(
-  transfer: Transfer,
+  transfer: Order,
   claimedTxIds: Set<string>
 ): Promise<void> {
   const { id, sendToken, sendAmount, senderAddress, depositAddress, createdAt } = transfer;
 
   if (!depositAddress) {
-    console.warn(`[MONITOR] Transfer ${id}: no depositAddress stored — skipping`);
+    console.warn(`[MONITOR] Order ${id}: no depositAddress stored — skipping`);
     return;
   }
 
-  // Expire stalled transfers
-  if (Date.now() - new Date(createdAt).getTime() > TRANSFER_TIMEOUT_MS) {
-    console.warn(`[MONITOR] Transfer ${id} timed out — marking as failed`);
-    await updateTransferStatus(id, "failed");
-    return;
-  }
+  // Expiry is NOT handled here any more — see lib/expirySweep.ts.  Keeping it in
+  // this path meant only on-chain-polled orders ever expired.
 
   let result: CheckResult;
   try {
@@ -224,39 +220,25 @@ async function checkTransfer(
   claimedTxIds.add(result.txId);
 
   console.log(
-    `[MONITOR] Transfer ${id} confirmed on-chain (txId: ${result.txId})` +
+    `[MONITOR] Order ${id} confirmed on-chain (txId: ${result.txId})` +
     (senderAddress ? ` from ${senderAddress}` : "") +
-    " — initiating Flutterwave payout"
+    " — notifying operator for manual payout"
   );
 
-  // Persist the claim BEFORE calling Flutterwave so the txId survives a
-  // server restart even if the payout call subsequently errors.
-  await claimTransferTxId(id, result.txId);
-
-  try {
-    const flwResult = await callFlwTransfer({
-      account_number: transfer.accountNumber,
-      account_bank:   transfer.bankCode,
-      // Ensure the fiat amount is rounded to 2 d.p. before sending to Flutterwave.
-      amount:         Math.round(transfer.receiveAmount * 100) / 100,
-      currency:       transfer.receiveCurrency,
-      narration:      `Sassaby: ${transfer.sendAmount} ${transfer.sendToken} → ${transfer.receiveCurrency}`,
-      // Stable reference for idempotent retries.
-      transferId:     id,
-    });
-    console.log(`[FLW] Payout for transfer ${id} initiated:`, flwResult);
-    // If FLW_WEBHOOK_SECRET is configured, Flutterwave will call the webhook
-    // to confirm final settlement — don’t auto-complete here.
-    // If no webhook is configured, mark completed optimistically.
-    if (!process.env.FLW_WEBHOOK_SECRET) {
-      await updateTransferStatus(id, "completed", new Date().toISOString());
-    } else {
-      console.log(`[FLW] Transfer ${id} awaiting webhook confirmation`);
-    }
-  } catch (err) {
-    console.error(`[FLW] Payout failed for transfer ${id}:`, err);
-    await updateTransferStatus(id, "failed");
+  // Atomic: claims the txId and moves awaiting_deposit → deposit_confirmed in a
+  // single write.  If the order already moved (restart mid-cycle, or a second
+  // monitor instance), this returns null and we must NOT notify again.
+  const claimed = await claimTransferTxId(id, result.txId);
+  if (!claimed) {
+    console.warn(
+      `[MONITOR] Order ${id} was already claimed by another writer — skipping notification`
+    );
+    return;
   }
+
+  // Fire-and-forget by design: notify() swallows its own errors, so a Telegram
+  // outage can never strand an order that has already been confirmed on-chain.
+  await notifyDepositConfirmed(claimed, result.txId);
 }
 
 // ─── Poll loop ────────────────────────────────────────────────────────────────
@@ -269,10 +251,14 @@ export function startChainMonitor(): void {
   const poll = async () => {
     try {
       const all     = await getAllTransfers();
-      const pending = all.filter((t) => t.status === "pending");
+      // Only the sell leg deposits on-chain.  Buy-leg orders are settled by the
+      // operator against a bank credit and never appear here.
+      const pending = all.filter(
+        (t) => t.direction === "sell" && t.status === "awaiting_deposit"
+      );
 
-      // Build the set of txIds already used by confirmed/processing transfers
-      // so we never match them again.
+      // Build the set of txIds already matched to any order so a deposit can
+      // never be counted twice.
       const claimedTxIds = new Set<string>(
         all
           .filter((t) => t.claimedTxId)
@@ -280,10 +266,10 @@ export function startChainMonitor(): void {
       );
 
       if (pending.length > 0) {
-        console.log(`[MONITOR] Checking ${pending.length} pending transfer(s)…`);
+        console.log(`[MONITOR] Checking ${pending.length} awaiting-deposit order(s)…`);
 
         // Process sequentially — each claimed txId is added to the shared set
-        // immediately after a match so the next transfer in the loop sees it.
+        // immediately after a match so the next order in the loop sees it.
         for (const transfer of pending) {
           await checkTransfer(transfer, claimedTxIds);
         }

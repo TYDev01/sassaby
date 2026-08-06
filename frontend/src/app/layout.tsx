@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import MouseGlow from "@/components/MouseGlow";
+import BackgroundArt from "@/components/BackgroundArt";
 import ClientProviders from "@/components/ClientProviders";
 import { Toaster } from "@/components/ui/sonner";
 import RatesTicker from "@/components/RatesTicker";
@@ -45,6 +46,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-[#0a0a0a] text-white min-h-screen pb-0`}
       >
+        <BackgroundArt />
         <MouseGlow />
         <ClientProviders>{children}</ClientProviders>
         <Toaster position="top-right" richColors theme="dark" />

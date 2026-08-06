@@ -7,26 +7,102 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ─── Transfers ────────────────────────────────────────────────────────────────
+// ─── Users ────────────────────────────────────────────────────────────────────
+// Minimal KYC by design: enough to enforce sender-name matching on fiat credits
+// and to maintain a ban list, and no more.  Deliberately NOT stored: BVN, ID
+// document images.  See task.md §7 — a stored BVN set is a honeypot and a
+// disproportionate liability for the protection it buys.
+
+model User {
+  id              String   @id
+  createdAt       DateTime @default(now())
+  email           String   @unique
+  /// bcrypt hash — never the password itself.
+  password        String
+  phone           String   @default("")
+  fullName        String   @default("")
+  /// Name on the bank account the user pays FROM.  A fiat credit whose sender
+  /// name does not match this is never released against — third-party payment
+  /// is the fraud pattern, not a rounding quirk.
+  bankAccountName String   @default("")
+  /// "light" until a threshold forces more.  See task.md §7.
+  kycTier         String   @default("light")
+  banned          Boolean  @default(false)
+
+  orders          Transfer[]
+}
+
+// ─── Orders ───────────────────────────────────────────────────────────────────
+// Bidirectional.  `direction` distinguishes the two settlement flows:
+//
+//   "sell" — client sells crypto to the desk.
+//            awaiting_deposit → deposit_confirmed → awaiting_manual_payout → settled
+//            The chain monitor detects the deposit and notifies; the operator
+//            pays fiat from their bank and marks it settled.
+//
+//   "buy"  — client buys crypto from the desk.
+//            awaiting_payment → payment_claimed → verifying → released
+//            The client pays fiat to the desk's bank, taps "I've made payment",
+//            and the operator verifies the credit in their banking app before
+//            releasing crypto.
+//
+// Terminal states for both: rejected | expired | failed.
 
 model Transfer {
-  id              String    @id
-  createdAt       DateTime  @default(now())
-  sendAmount      Float
-  sendToken       String
-  usdEquivalent   Float
-  receiveAmount   Float
-  receiveCurrency String
-  fee             Float
-  feeRate         Float
-  bank            String
-  bankCode        String
-  accountNumber   String
-  senderAddress   String    @default("")
-  depositAddress  String    @default("")
-  claimedTxId     String    @default("")  // on-chain txId that triggered this transfer's payout
-  status          String    @default("pending")
-  completedAt     DateTime?
+  id                 String    @id
+  createdAt          DateTime  @default(now())
+
+  userId             String
+  user               User      @relation(fields: [userId], references: [id])
+
+  /// "buy" | "sell" — from the CLIENT's perspective.
+  direction          String    @default("sell")
+
+  sendAmount         Float
+  sendToken          String
+  /// Network the asset moves on.  Required: USDT is meaningless without it.
+  chain              String    @default("stacks")
+
+  usdEquivalent      Float
+  receiveAmount      Float
+  receiveCurrency    String
+  fee                Float
+  feeRate            Float
+
+  // ── Fiat leg ────────────────────────────────────────────────────────────────
+  // For "sell" these are the CLIENT's bank details (the desk pays out to them).
+  // For "buy" they stay empty — the client pays into the desk's account, which
+  // is admin config, not per-order data.
+  bank               String    @default("")
+  bankCode           String    @default("")
+  accountNumber      String    @default("")
+
+  // ── Crypto leg ──────────────────────────────────────────────────────────────
+  /// "sell": the client's wallet, cross-checked against the on-chain sender.
+  senderAddress      String    @default("")
+  /// "sell": where the client deposits.  Snapshotted at creation — switching the
+  /// active receiving address must never affect in-flight orders.
+  depositAddress     String    @default("")
+  /// "buy": the client's wallet, where released crypto is sent.
+  destinationAddress String    @default("")
+  /// On-chain txId that satisfied this order.  Empty until matched.
+  claimedTxId        String    @default("")
+
+  status             String    @default("awaiting_deposit")
+  completedAt        DateTime?
+
+  // ── Release audit ───────────────────────────────────────────────────────────
+  // Manual settlement means a human is the control.  Record who acted and what
+  // they acted on, or a dispute six weeks later is unanswerable.
+  releasedAt         DateTime?
+  releasedBy         String    @default("")
+  /// What the release was verified against — bank reference, credit timestamp.
+  evidenceRef        String    @default("")
+  /// Operator note on a rejection, surfaced to the client.
+  rejectionReason    String    @default("")
+
+  @@index([userId, status])
+  @@index([status])
 }
 
 // ─── Rate config (admin-managed USD → fiat rates) ────────────────────────────
@@ -38,12 +114,27 @@ model RateConfig {
   manualRate Float  @default(0)
 }
 
-// ─── Deposit addresses (admin-managed per-token receive addresses) ────────────
+// ─── Deposit addresses ────────────────────────────────────────────────────────
+// Admin-managed receiving addresses, one per (token, chain).  `token` alone can
+// no longer be unique — USDT exists on Tron, Ethereum and BSC at different
+// addresses.
+//
+// `kind` is the switchable receiving method: route deposits either to a Bitget
+// deposit address or to a self-custody wallet, per asset, changeable at any time.
 
 model DepositAddress {
   id        Int      @id @default(autoincrement())
-  token     String   @unique  // "STX" | "USDCx" | "BTC"
+  token     String
+  chain     String   @default("stacks")
   address   String
+  /// "self" | "bitget"
+  kind      String   @default("self")
+  /// Memo/tag/comment required by some chains (TON especially).  A client who
+  /// omits it can lose funds — the UI must make it impossible to miss.
+  memo      String   @default("")
   label     String   @default("")
+  active    Boolean  @default(true)
   updatedAt DateTime @updatedAt
+
+  @@unique([token, chain])
 }

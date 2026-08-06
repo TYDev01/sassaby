@@ -471,7 +471,7 @@ export default function HistoryPage() {
   }, [connected, load]);
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] flex flex-col">
+    <div className="relative z-10 min-h-screen flex flex-col">
       <Navbar />
 
       <main className="flex-1 flex flex-col px-4 sm:px-6 pt-28 sm:pt-32 pb-20 max-w-[1200px] mx-auto w-full">

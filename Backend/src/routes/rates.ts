@@ -141,6 +141,18 @@ router.post("/config", adminAuth, async (req, res: ExpressResponse) => {
 interface FlwRateEntry { rate: number; expiresAt: number; }
 const flwRateCache: Record<string, FlwRateEntry> = {};
 
+/**
+ * Test-only: drop every memoised price and rate.
+ *
+ * Both caches are module-level, so without this one suite's fetch survives into
+ * the next and silently shadows its stubs — which is exactly how a passing test
+ * starts depending on CoinGecko being up.
+ */
+export function __resetRateCaches(): void {
+  for (const k of Object.keys(priceCache)) delete priceCache[k];
+  for (const k of Object.keys(flwRateCache)) delete flwRateCache[k];
+}
+
 export async function getFlwRate(destCurrency: string): Promise<{ rate: number }> {
   // ── Check admin config in DB ──────────────────────────────────────────────
   try {

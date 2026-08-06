@@ -1,29 +1,43 @@
 import { Router } from "express";
 import { prisma } from "../lib/prisma";
 import { adminAuth } from "../middleware/adminAuth";
+import { isSupportedAsset, ASSETS } from "../lib/assets";
 
 const router = Router();
 
-const VALID_TOKENS = ["STX", "USDCx", "BTC"] as const;
-type Token = (typeof VALID_TOKENS)[number];
+const MAX_ADDRESS_LEN = 128;
+const MAX_MEMO_LEN = 128;
+const VALID_KINDS = ["self", "bitget"] as const;
+type Kind = (typeof VALID_KINDS)[number];
 
 // ─── GET /api/deposit-addresses ──────────────────────────────────────────────
-// Returns all deposit addresses (token → address map). Public endpoint so
-// the frontend can show the correct deposit address to the user.
+// Public: the client has to be shown where to deposit.
+//
+// Keyed by "TOKEN:chain" — token alone is ambiguous now that USDT exists on
+// five networks. `kind` is intentionally NOT exposed: whether the desk custodies
+// an asset itself or parks it on Bitget is nobody's business but the operator's.
 
 router.get("/", async (_req, res) => {
   try {
-    const rows = await prisma.depositAddress.findMany();
-    // Return as an array and also a convenient token-keyed map
-    const addresses: Record<string, { address: string; label: string; updatedAt: string }> = {};
+    const rows = await prisma.depositAddress.findMany({ where: { active: true } });
+
+    const addresses: Record<
+      string,
+      { token: string; chain: string; address: string; memo: string; label: string; updatedAt: string }
+    > = {};
+
     for (const row of rows) {
-      addresses[row.token] = {
-        address: row.address,
-        label: row.label,
+      addresses[`${row.token}:${row.chain}`] = {
+        token:     row.token,
+        chain:     row.chain,
+        address:   row.address,
+        memo:      row.memo,
+        label:     row.label,
         updatedAt: row.updatedAt.toISOString(),
       };
     }
-    res.json({ addresses, list: rows });
+
+    res.json({ addresses, supported: ASSETS });
   } catch (err) {
     console.error("[deposit-addresses] GET /", err);
     res.status(500).json({ error: "Failed to fetch deposit addresses" });
@@ -31,51 +45,58 @@ router.get("/", async (_req, res) => {
 });
 
 // ─── POST /api/deposit-addresses ─────────────────────────────────────────────
-// Upsert a deposit address for a given token. Admin-only.
+// Upsert the receiving address for a (token, chain) pair. Admin-only.
+//
+// `kind` is the switchable receiving method — point an asset at a Bitget deposit
+// address or at a self-custody wallet, and change it whenever. Orders snapshot
+// the address at creation, so switching never moves an in-flight deposit target.
 
 router.post("/", adminAuth, async (req, res) => {
-  const { token, address, label = "" } = req.body as {
-    token: Token;
+  const { token, chain, address, memo = "", label = "", kind = "self", active = true } = req.body as {
+    token: string;
+    chain: string;
     address: string;
+    memo?: string;
     label?: string;
+    kind?: Kind;
+    active?: boolean;
   };
 
-  if (!VALID_TOKENS.includes(token)) {
-    res.status(400).json({ error: `token must be one of ${VALID_TOKENS.join(", ")}` });
-    return;
+  if (!token || !chain || !isSupportedAsset(token, chain)) {
+    return res.status(400).json({ error: `${token} on ${chain} is not a supported asset.` });
   }
-  if (!address || typeof address !== "string" || address.trim() === "") {
-    res.status(400).json({ error: "address is required" });
-    return;
+  if (!address || typeof address !== "string" || !address.trim()) {
+    return res.status(400).json({ error: "address is required" });
+  }
+  if (address.length > MAX_ADDRESS_LEN || memo.length > MAX_MEMO_LEN) {
+    return res.status(400).json({ error: "address or memo exceeds the maximum allowed length." });
+  }
+  if (!VALID_KINDS.includes(kind)) {
+    return res.status(400).json({ error: `kind must be one of ${VALID_KINDS.join(", ")}` });
   }
 
   try {
     const row = await prisma.depositAddress.upsert({
-      where: { token },
-      create: { token, address: address.trim(), label: label.trim() },
-      update: { address: address.trim(), label: label.trim() },
+      where:  { token_chain: { token, chain } },
+      create: { token, chain, address: address.trim(), memo: memo.trim(), label: label.trim(), kind, active },
+      update: { address: address.trim(), memo: memo.trim(), label: label.trim(), kind, active },
     });
-    res.json({ depositAddress: row });
+    return res.json({ depositAddress: row });
   } catch (err) {
     console.error("[deposit-addresses] POST /", err);
-    res.status(500).json({ error: "Failed to save deposit address" });
+    return res.status(500).json({ error: "Failed to save deposit address" });
   }
 });
 
-// ─── DELETE /api/deposit-addresses/:token ────────────────────────────────────
-// Remove a deposit address for a token.
+// ─── DELETE /api/deposit-addresses/:token/:chain ─────────────────────────────
 
-router.delete("/:token", adminAuth, async (req, res) => {
-  const { token } = req.params;
-  if (!VALID_TOKENS.includes(token as Token)) {
-    res.status(400).json({ error: `token must be one of ${VALID_TOKENS.join(", ")}` });
-    return;
-  }
+router.delete("/:token/:chain", adminAuth, async (req, res) => {
+  const { token, chain } = req.params;
   try {
-    await prisma.depositAddress.delete({ where: { token } });
+    await prisma.depositAddress.delete({ where: { token_chain: { token, chain } } });
     res.json({ ok: true });
   } catch {
-    // If not found, still return ok
+    // Already gone — the caller's intent is satisfied either way.
     res.json({ ok: true });
   }
 });

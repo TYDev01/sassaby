@@ -6,3 +6,6 @@
 **/.env.*.local
 **/node_modules/
 .DS_Store
+
+# Internal planning notes — not for the repo
+task.md

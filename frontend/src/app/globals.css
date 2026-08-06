@@ -140,6 +140,30 @@
   100% { transform: translateX(-50%); }
 }
 
+/* ─── Background spot illustrations ──────────────────────────────────────── */
+
+@keyframes bg-art-drift {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50%      { transform: translateY(-14px) rotate(1.5deg); }
+}
+
+@keyframes bg-art-sway {
+  0%, 100% { transform: translateX(0) rotate(0deg); }
+  50%      { transform: translateX(12px) rotate(-1.5deg); }
+}
+
+.bg-art-float      { animation: bg-art-drift 14s ease-in-out infinite; }
+.bg-art-float-slow { animation: bg-art-drift 20s ease-in-out infinite; animation-delay: -6s; }
+.bg-art-sway       { animation: bg-art-sway 17s ease-in-out infinite; animation-delay: -4s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .bg-art-float,
+  .bg-art-float-slow,
+  .bg-art-sway {
+    animation: none;
+  }
+}
+
 .animate-ticker {
   animation: ticker 40s linear infinite;
 }
