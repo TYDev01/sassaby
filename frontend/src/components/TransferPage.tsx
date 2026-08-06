@@ -324,7 +324,7 @@ export default function TransferPage() {
   // ── Render ───────────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen sm:h-screen sm:overflow-hidden bg-[#0a0a0a] flex flex-col">
+    <div className="relative z-10 min-h-screen sm:h-screen sm:overflow-hidden flex flex-col">
       {/* Transfer confirmation modal */}
       <TransferModal
         open={showModal}
