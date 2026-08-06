@@ -32,7 +32,8 @@ import {
 } from "recharts";
 import { toast } from "sonner";
 import Navbar from "@/components/Navbar";
-import { fetchAdminStats, AdminStats, Transfer, fetchRateConfig, updateRateConfig, RateConfig, RateMode, fetchDepositAddresses, upsertDepositAddress, deleteDepositAddress, DepositAddress, SendToken } from "@/lib/api";
+import { STATUS_LABEL, STATUS_STYLE } from "@/lib/orderStatus";
+import { fetchAdminStats, AdminStats, Order, fetchRateConfig, updateRateConfig, RateConfig, RateMode, fetchDepositAddresses, upsertDepositAddress, deleteDepositAddress, DepositAddress, AssetSpec } from "@/lib/api";
 import { MapPin, Trash2 } from "lucide-react";
 import { useWallet } from "@/lib/wallet";
 import AdminChainHistory from "@/components/AdminChainHistory";
@@ -89,26 +90,19 @@ function StatCard({ label, value, sub, icon, accent = "#f97316", delay = 0 }: St
 
 // ─── Status Badge ─────────────────────────────────────────────────────────────
 
-const STATUS_STYLES: Record<Transfer["status"], string> = {
-  completed: "text-emerald-400 bg-emerald-400/10 border-emerald-400/20",
-  pending: "text-yellow-400 bg-yellow-400/10 border-yellow-400/20",
-  processing: "text-blue-400 bg-blue-400/10 border-blue-400/20",
-  failed: "text-red-400 bg-red-400/10 border-red-400/20",
-};
-
-function StatusBadge({ status }: { status: Transfer["status"] }) {
+function StatusBadge({ status }: { status: Order["status"] }) {
   return (
     <span
-      className={`text-[11px] font-semibold uppercase tracking-wider px-2.5 py-1 rounded-full border ${STATUS_STYLES[status]}`}
+      className={`text-[11px] font-semibold uppercase tracking-wider px-2.5 py-1 rounded-full border ${STATUS_STYLE[status]}`}
     >
-      {status}
+      {STATUS_LABEL[status]}
     </span>
   );
 }
 
 // ─── Recent Transfers Table ───────────────────────────────────────────────────
 
-function RecentTransfersTable({ transfers }: { transfers: Transfer[] }) {
+function RecentTransfersTable({ transfers }: { transfers: Order[] }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -569,30 +563,51 @@ function DashboardSkeleton() {
 }
 
 // ─── Deposit Address Manager ──────────────────────────────────────────────────
+//
+// Keyed on (token, chain), not token alone — USDT lives on five networks at five
+// different addresses. The asset list comes from the backend registry so this
+// panel never drifts from what the API will actually accept.
 
-const DEPOSIT_TOKENS: Array<{ token: SendToken; label: string; imgSrc: string }> = [
-  { token: "STX",   label: "Stacks (STX)",       imgSrc: "/stx.png"   },
-  { token: "USDCx", label: "USD Coin on Stacks",  imgSrc: "/usdcx.png" },
-  { token: "BTC",   label: "Bitcoin (BTC)",       imgSrc: "/btc.png"   },
-];
+/** Per-asset icon where we have one; falls back to a lettered chip. */
+const TOKEN_ICONS: Record<string, string> = {
+  STX: "/stx.png",
+  USDCx: "/usdcx.png",
+  BTC: "/btc.png",
+};
+
+interface AddrDraft {
+  address: string;
+  label: string;
+  memo: string;
+  kind: "self" | "bitget";
+}
+
+const EMPTY_DRAFT: AddrDraft = { address: "", label: "", memo: "", kind: "self" };
 
 function DepositAddressManager() {
+  const [assets, setAssets] = useState<AssetSpec[]>([]);
   const [map, setMap] = useState<Record<string, DepositAddress>>({});
-  const [drafts, setDrafts] = useState<Record<string, { address: string; label: string }>>({});
+  const [drafts, setDrafts] = useState<Record<string, AddrDraft>>({});
   const [saving, setSaving] = useState<Record<string, boolean>>({});
   const [deleting, setDeleting] = useState<Record<string, boolean>>({});
   const [savedFlag, setSavedFlag] = useState<Record<string, boolean>>({});
   const [loadingInit, setLoadingInit] = useState(true);
 
-  // ── Load existing addresses ──────────────────────────────────────────────
   useEffect(() => {
     fetchDepositAddresses()
       .then((data) => {
-        setMap(data.addresses as Record<string, DepositAddress>);
-        const d: Record<string, { address: string; label: string }> = {};
-        for (const t of DEPOSIT_TOKENS) {
-          const existing = (data.addresses as Record<string, DepositAddress>)[t.token];
-          d[t.token] = { address: existing?.address ?? "", label: existing?.label ?? "" };
+        setAssets(data.supported ?? []);
+        setMap(data.addresses ?? {});
+        const d: Record<string, AddrDraft> = {};
+        for (const a of data.supported ?? []) {
+          const key = `${a.token}:${a.chain}`;
+          const existing = data.addresses?.[key];
+          d[key] = {
+            address: existing?.address ?? "",
+            label: existing?.label ?? "",
+            memo: existing?.memo ?? "",
+            kind: "self",
+          };
         }
         setDrafts(d);
       })
@@ -600,34 +615,56 @@ function DepositAddressManager() {
       .finally(() => setLoadingInit(false));
   }, []);
 
-  async function handleSave(token: SendToken) {
-    const draft = drafts[token];
+  function patchDraft(key: string, patch: Partial<AddrDraft>) {
+    setDrafts((d) => ({ ...d, [key]: { ...(d[key] ?? EMPTY_DRAFT), ...patch } }));
+  }
+
+  async function handleSave(asset: AssetSpec) {
+    const key = `${asset.token}:${asset.chain}`;
+    const draft = drafts[key];
     if (!draft?.address.trim()) { toast.error("Enter a deposit address"); return; }
-    setSaving((s) => ({ ...s, [token]: true }));
+    // A missing memo on a chain that needs one loses client funds, so refuse it
+    // here rather than discovering it after a deposit goes astray.
+    if (asset.requiresMemo && !draft.memo.trim()) {
+      toast.error(`${asset.network} requires a memo/tag`, {
+        description: "Deposits without it can be lost and need manual recovery.",
+      });
+      return;
+    }
+
+    setSaving((s) => ({ ...s, [key]: true }));
     try {
-      const saved = await upsertDepositAddress(token, draft.address.trim(), draft.label.trim());
-      setMap((m) => ({ ...m, [token]: saved }));
-      setSavedFlag((s) => ({ ...s, [token]: true }));
-      setTimeout(() => setSavedFlag((s) => ({ ...s, [token]: false })), 2000);
-      toast.success(`${token} deposit address saved`);
+      const saved = await upsertDepositAddress({
+        token: asset.token,
+        chain: asset.chain,
+        address: draft.address.trim(),
+        memo: draft.memo.trim(),
+        label: draft.label.trim(),
+        kind: draft.kind,
+      });
+      setMap((m) => ({ ...m, [key]: saved }));
+      setSavedFlag((s) => ({ ...s, [key]: true }));
+      setTimeout(() => setSavedFlag((s) => ({ ...s, [key]: false })), 2000);
+      toast.success(`${asset.token} on ${asset.network} saved`);
     } catch {
-      toast.error(`Failed to save ${token} address`);
+      toast.error(`Failed to save ${asset.token} address`);
     } finally {
-      setSaving((s) => ({ ...s, [token]: false }));
+      setSaving((s) => ({ ...s, [key]: false }));
     }
   }
 
-  async function handleDelete(token: SendToken) {
-    setDeleting((s) => ({ ...s, [token]: true }));
+  async function handleDelete(asset: AssetSpec) {
+    const key = `${asset.token}:${asset.chain}`;
+    setDeleting((s) => ({ ...s, [key]: true }));
     try {
-      await deleteDepositAddress(token);
-      setMap((m) => { const n = { ...m }; delete n[token]; return n; });
-      setDrafts((d) => ({ ...d, [token]: { address: "", label: "" } }));
-      toast.success(`${token} deposit address removed`);
+      await deleteDepositAddress(asset.token, asset.chain);
+      setMap((m) => { const n = { ...m }; delete n[key]; return n; });
+      setDrafts((d) => ({ ...d, [key]: EMPTY_DRAFT }));
+      toast.success(`${asset.token} on ${asset.network} removed`);
     } catch {
-      toast.error(`Failed to remove ${token} address`);
+      toast.error(`Failed to remove ${asset.token} address`);
     } finally {
-      setDeleting((s) => ({ ...s, [token]: false }));
+      setDeleting((s) => ({ ...s, [key]: false }));
     }
   }
 
@@ -642,7 +679,7 @@ function DepositAddressManager() {
         <MapPin size={16} className="text-[#f97316]" />
         <h2 className="text-white font-semibold text-sm">Deposit Address Manager</h2>
         <span className="ml-auto text-[11px] text-gray-500 font-medium uppercase tracking-wider">
-          Per-token receive addresses
+          Per token &amp; network
         </span>
       </div>
 
@@ -653,58 +690,95 @@ function DepositAddressManager() {
         </div>
       ) : (
         <div className="divide-y divide-white/[0.05]">
-          {DEPOSIT_TOKENS.map(({ token, label, imgSrc }) => {
-            const existing = map[token];
-            const draft = drafts[token] ?? { address: "", label: "" };
-            const isSaving  = saving[token];
-            const isDeleting = deleting[token];
-            const isSaved   = savedFlag[token];
+          {assets.map((asset) => {
+            const key = `${asset.token}:${asset.chain}`;
+            const existing = map[key];
+            const draft = drafts[key] ?? EMPTY_DRAFT;
+            const isSaving = saving[key];
+            const isDeleting = deleting[key];
+            const isSaved = savedFlag[key];
             const hasExisting = !!existing?.address;
+            const icon = TOKEN_ICONS[asset.token];
 
             return (
-              <div key={token} className="px-4 sm:px-6 py-5 flex flex-col gap-3">
-                {/* Token label */}
+              <div key={key} className="px-4 sm:px-6 py-5 flex flex-col gap-3">
+                {/* Asset header */}
                 <div className="flex items-center gap-3">
-                  <Image src={imgSrc} alt={token} width={32} height={32} className="rounded-full" />
-                  <div>
-                    <p className="text-white text-sm font-semibold">{token}</p>
-                    <p className="text-gray-500 text-xs">{label}</p>
-                  </div>
-                  {hasExisting && (
-                    <span className="ml-auto inline-flex items-center gap-1 text-[11px] text-emerald-400 bg-emerald-400/10 border border-emerald-400/20 rounded-full px-2.5 py-0.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                      Active
-                    </span>
+                  {icon ? (
+                    <Image src={icon} alt={asset.token} width={32} height={32} className="rounded-full" />
+                  ) : (
+                    <div className="w-8 h-8 rounded-full bg-white/[0.06] border border-white/10 flex items-center justify-center text-[11px] font-bold text-gray-300">
+                      {asset.token.slice(0, 3)}
+                    </div>
                   )}
+                  <div className="min-w-0">
+                    <p className="text-white text-sm font-semibold">{asset.token}</p>
+                    <p className="text-gray-500 text-xs truncate">{asset.network}</p>
+                  </div>
+
+                  <div className="ml-auto flex items-center gap-2">
+                    {/* Chains without a monitor adapter cannot be auto-detected —
+                        deposits there must route via Bitget or be checked by hand. */}
+                    {!asset.monitored && (
+                      <span className="hidden sm:inline text-[11px] text-amber-400/90 bg-amber-400/10 border border-amber-400/20 rounded-full px-2.5 py-0.5">
+                        No auto-detect
+                      </span>
+                    )}
+                    {hasExisting && (
+                      <span className="inline-flex items-center gap-1 text-[11px] text-emerald-400 bg-emerald-400/10 border border-emerald-400/20 rounded-full px-2.5 py-0.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                        Active
+                      </span>
+                    )}
+                  </div>
                 </div>
 
-                {/* Address input */}
+                {/* Address + label */}
                 <div className="flex flex-col sm:flex-row gap-2">
                   <input
                     type="text"
                     value={draft.address}
-                    onChange={(e) =>
-                      setDrafts((d) => ({ ...d, [token]: { ...d[token], address: e.target.value } }))
-                    }
-                    placeholder={`${token} deposit address…`}
+                    onChange={(e) => patchDraft(key, { address: e.target.value })}
+                    placeholder={`${asset.token} address on ${asset.network}…`}
                     className="flex-1 bg-[#1a1a1a] border border-white/[0.08] rounded-lg px-4 py-2.5 text-sm text-white font-mono placeholder:text-gray-600 focus:outline-none focus:border-white/20 transition-colors"
                   />
                   <input
                     type="text"
                     value={draft.label}
-                    onChange={(e) =>
-                      setDrafts((d) => ({ ...d, [token]: { ...d[token], label: e.target.value } }))
-                    }
+                    onChange={(e) => patchDraft(key, { label: e.target.value })}
                     placeholder="Label (optional)"
-                    className="w-full sm:w-44 bg-[#1a1a1a] border border-white/[0.08] rounded-lg px-4 py-2.5 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-white/20 transition-colors"
+                    className="w-full sm:w-40 bg-[#1a1a1a] border border-white/[0.08] rounded-lg px-4 py-2.5 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-white/20 transition-colors"
                   />
                 </div>
 
-                {/* Action buttons */}
+                {/* Memo + custody */}
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    type="text"
+                    value={draft.memo}
+                    onChange={(e) => patchDraft(key, { memo: e.target.value })}
+                    placeholder={asset.requiresMemo ? "Memo / tag (required)" : "Memo / tag (optional)"}
+                    className={`flex-1 bg-[#1a1a1a] border rounded-lg px-4 py-2.5 text-sm text-white font-mono placeholder:text-gray-600 focus:outline-none transition-colors ${
+                      asset.requiresMemo && !draft.memo.trim()
+                        ? "border-amber-500/40 focus:border-amber-500/70"
+                        : "border-white/[0.08] focus:border-white/20"
+                    }`}
+                  />
+                  <select
+                    value={draft.kind}
+                    onChange={(e) => patchDraft(key, { kind: e.target.value as "self" | "bitget" })}
+                    className="w-full sm:w-40 bg-[#1a1a1a] border border-white/[0.08] rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-white/20 transition-colors cursor-pointer"
+                  >
+                    <option value="self">Self-custody</option>
+                    <option value="bitget">Bitget</option>
+                  </select>
+                </div>
+
+                {/* Actions */}
                 <div className="flex items-center gap-2">
                   <motion.button
                     whileTap={{ scale: 0.96 }}
-                    onClick={() => handleSave(token)}
+                    onClick={() => handleSave(asset)}
                     disabled={isSaving || !draft.address.trim()}
                     className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-200 cursor-pointer ${
                       isSaved
@@ -724,7 +798,7 @@ function DepositAddressManager() {
                   {hasExisting && (
                     <motion.button
                       whileTap={{ scale: 0.96 }}
-                      onClick={() => handleDelete(token)}
+                      onClick={() => handleDelete(asset)}
                       disabled={isDeleting}
                       className="px-4 py-2 rounded-lg text-xs font-semibold bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-all duration-200 cursor-pointer flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
                     >

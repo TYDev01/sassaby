@@ -13,7 +13,8 @@ import {
   Currency,
 } from "../store";
 import { isSupportedAsset, findAsset } from "../lib/assets";
-import { getTokenPriceUSD, getFlwRate } from "./rates";
+import { getTokenPriceUSD, getDeskRate } from "./rates";
+import { sideForDirection } from "../lib/deskRate";
 import { notifyPaymentClaimed } from "../lib/notify";
 import { userAuth } from "../middleware/userAuth";
 import { prisma } from "../lib/prisma";
@@ -26,8 +27,14 @@ const VALID_DIRECTIONS: OrderDirection[] = ["buy", "sell"];
 /** Guard against fat-finger and abuse (crypto units). */
 const MAX_SEND_AMOUNT = 1_000_000;
 
-/** Platform fee. */
-const FEE_RATE = 0.015; // 1.5%
+/**
+ * No separate platform fee.
+ *
+ * The margin is the spread between the desk's buy-side and sell-side P2P ads —
+ * it is already inside the rate. Charging a percentage on top would bill the
+ * client twice for the same thing.
+ */
+const FEE_RATE = 0;
 
 /** Postgres unique-violation code — here, the one-open-order-per-user index. */
 const PG_UNIQUE_VIOLATION = "P2002";
@@ -148,20 +155,35 @@ router.post("/", userAuth, async (req: Request, res: Response) => {
   let fee = 0;
   let receiveAmount = 0;
   try {
-    const [tokenPrice, { rate: fiatRate }] = await Promise.all([
+    // Price the correct half of the desk's book: a client selling crypto is the
+    // desk buying, and it pays out at its buy-side ad price. Using one number for
+    // both directions gives the spread away.
+    const [tokenPrice, desk] = await Promise.all([
       getTokenPriceUSD(sendToken),
-      getFlwRate(receiveCurrency),
+      getDeskRate(receiveCurrency, sideForDirection(direction)),
     ]);
+    const fiatRate = desk.rate;
     usdEquivalent = Math.round(sendAmount * tokenPrice * 100) / 100;
-    fee           = Math.round(usdEquivalent * FEE_RATE * 100) / 100;
-    receiveAmount = direction === "sell"
-      // Selling: the client receives fiat, net of fee.
-      ? Math.round((usdEquivalent - fee) * fiatRate * 100) / 100
-      // Buying: the client pays fiat, plus fee.
-      : Math.round((usdEquivalent + fee) * fiatRate * 100) / 100;
+    fee           = 0;
+    // Both directions convert at the desk rate for their side of the book; the
+    // margin lives in the difference between those two rates, not in a markup.
+    receiveAmount = Math.round(usdEquivalent * fiatRate * 100) / 100;
   } catch (err) {
     console.error("[ORDERS] Failed to fetch live rates:", err);
     return res.status(502).json({ error: "Could not fetch live rates. Please try again." });
+  }
+
+  // A quote that rounds to zero is a broken rate, not a cheap trade. Creating the
+  // order anyway would put a client in a queue to pay or receive nothing, so
+  // refuse it here rather than let an operator discover it at release time.
+  if (!(usdEquivalent > 0) || !(receiveAmount > 0)) {
+    console.error(
+      `[ORDERS] Refusing zero-value quote: ${sendAmount} ${sendToken} → ` +
+        `${receiveAmount} ${receiveCurrency} (usd ${usdEquivalent})`
+    );
+    return res.status(502).json({
+      error: "Could not price this order right now. Please try again shortly.",
+    });
   }
 
   const order: NewOrder = {

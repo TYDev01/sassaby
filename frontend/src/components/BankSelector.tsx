@@ -13,7 +13,7 @@ import {
   RefreshCw,
   X,
 } from "lucide-react";
-import { fetchBanks, verifyAccount, FlwBank } from "@/lib/api";
+import { fetchBanks, verifyAccount, Bank as ApiBank } from "@/lib/api";
 
 // ─── Re-export Bank type (aligned with Flutterwave) ──────────────────────────
 
@@ -35,7 +35,7 @@ export interface BankSelectorProps {
 
 // ─── Map FLW bank → our Bank shape ───────────────────────────────────────────
 
-function toBank(b: FlwBank): Bank {
+function toBank(b: ApiBank): Bank {
   return { id: String(b.id), name: b.name, code: b.code, country: "NG" };
 }
 

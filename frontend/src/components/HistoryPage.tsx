@@ -23,7 +23,9 @@ import {
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import { useWallet } from "@/lib/wallet";
-import { fetchTransfers, Transfer } from "@/lib/api";
+import { fetchOrders, Order } from "@/lib/api";
+import { STATUS_LABEL, STATUS_STYLE, explorerTxUrl } from "@/lib/orderStatus";
+import { useAuth } from "@/lib/auth";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -38,27 +40,27 @@ function fmt(n: number, d = 2) {
 
 // ─── Status Badge ─────────────────────────────────────────────────────────────
 
-const STATUS_STYLES: Record<Transfer["status"], string> = {
-  completed: "text-emerald-400 bg-emerald-400/10 border-emerald-400/20",
-  pending: "text-yellow-400 bg-yellow-400/10 border-yellow-400/20",
-  processing: "text-blue-400 bg-blue-400/10 border-blue-400/20",
-  failed: "text-red-400 bg-red-400/10 border-red-400/20",
+const STATUS_ICONS: Partial<Record<Order["status"], React.ReactNode>> = {
+  settled:           <CheckCircle2 size={13} />,
+  released:          <CheckCircle2 size={13} />,
+  awaiting_deposit:  <Clock size={13} />,
+  awaiting_payment:  <Clock size={13} />,
+  payment_claimed:   <Clock size={13} />,
+  deposit_confirmed: <Loader2 size={13} className="animate-spin" />,
+  verifying:         <Loader2 size={13} className="animate-spin" />,
+  awaiting_manual_payout: <Loader2 size={13} className="animate-spin" />,
+  failed:            <XCircle size={13} />,
+  rejected:          <XCircle size={13} />,
+  expired:           <XCircle size={13} />,
 };
 
-const STATUS_ICONS: Record<Transfer["status"], React.ReactNode> = {
-  completed: <CheckCircle2 size={13} />,
-  pending: <Clock size={13} />,
-  processing: <Loader2 size={13} className="animate-spin" />,
-  failed: <XCircle size={13} />,
-};
-
-function StatusBadge({ status }: { status: Transfer["status"] }) {
+function StatusBadge({ status }: { status: Order["status"] }) {
   return (
     <span
-      className={`inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider px-2.5 py-1 rounded-full border ${STATUS_STYLES[status]}`}
+      className={`inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider px-2.5 py-1 rounded-full border ${STATUS_STYLE[status]}`}
     >
       {STATUS_ICONS[status]}
-      {status}
+      {STATUS_LABEL[status]}
     </span>
   );
 }
@@ -83,11 +85,9 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-// ─── Connect Wall ─────────────────────────────────────────────────────────────
+// ─── Sign-in Wall ─────────────────────────────────────────────────────────────
 
-function ConnectWall() {
-  const { connectWallet, connecting } = useWallet();
-
+function SignInWall() {
   return (
     <motion.div
       initial={{ opacity: 0, y: 24 }}
@@ -95,7 +95,6 @@ function ConnectWall() {
       transition={{ duration: 0.5, ease: "easeOut" }}
       className="flex flex-col items-center justify-center flex-1 py-24 px-6 text-center"
     >
-      {/* Animated wallet icon */}
       <motion.div
         animate={{ y: [0, -8, 0] }}
         transition={{ duration: 2.8, repeat: Infinity, ease: "easeInOut" }}
@@ -109,98 +108,81 @@ function ConnectWall() {
       </motion.div>
 
       <h2 className="text-white text-2xl font-bold tracking-tight mb-3">
-        Connect your wallet
+        Sign in to see your orders
       </h2>
       <p className="text-gray-400 text-sm max-w-xs mb-8 leading-relaxed">
-        Connect your Stacks wallet to view your personal transfer history and
-        account details.
+        Orders are tied to your account, so we can match your bank payment to the
+        right trade.
       </p>
 
-      <motion.button
-        whileHover={{ scale: 1.04 }}
-        whileTap={{ scale: 0.97 }}
-        onClick={connectWallet}
-        disabled={connecting}
-        className="
-          flex items-center gap-2.5 px-8 py-3.5 rounded-xl
-          bg-[#f97316] hover:bg-[#ea6c0e]
-          text-white font-semibold text-sm
-          shadow-lg shadow-[#f97316]/20
-          transition-all duration-200 cursor-pointer
-          disabled:opacity-70 disabled:cursor-not-allowed
-        "
-      >
-        {connecting ? (
-          <Loader2 size={18} className="animate-spin shrink-0" />
-        ) : (
-          <Wallet size={18} className="shrink-0" />
-        )}
-        {connecting ? "Connecting…" : "Connect Wallet"}
-      </motion.button>
-
-      <p className="text-gray-600 text-xs mt-5">
-        Supports Leather, Xverse & any Stacks-compatible wallet
-      </p>
+      <div className="flex items-center gap-3">
+        <Link href="/signin?next=/history">
+          <motion.div
+            whileHover={{ scale: 1.04 }}
+            whileTap={{ scale: 0.97 }}
+            className="
+              px-8 py-3.5 rounded-xl bg-[#f97316] hover:bg-[#ea6c0e]
+              text-white font-semibold text-sm
+              shadow-lg shadow-[#f97316]/20
+              transition-all duration-200 cursor-pointer
+            "
+          >
+            Sign in
+          </motion.div>
+        </Link>
+        <Link href="/signup?next=/history">
+          <motion.div
+            whileHover={{ scale: 1.04 }}
+            whileTap={{ scale: 0.97 }}
+            className="
+              px-8 py-3.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.12]
+              text-gray-200 font-semibold text-sm
+              transition-all duration-200 cursor-pointer
+            "
+          >
+            Create account
+          </motion.div>
+        </Link>
+      </div>
     </motion.div>
   );
 }
 
-// ─── Wallet Header ────────────────────────────────────────────────────────────
+// ─── Account Header ───────────────────────────────────────────────────────────
 
-function WalletHeader() {
-  const { addresses, disconnectWallet } = useWallet();
+function AccountHeader() {
+  const { user } = useAuth();
+  if (!user) return null;
 
   return (
     <motion.div
       initial={{ opacity: 0, y: -8 }}
       animate={{ opacity: 1, y: 0 }}
       className="
-        flex items-center justify-between
+        flex flex-wrap items-center justify-between gap-4
         bg-[#111111] border border-white/[0.07]
         rounded-2xl px-6 py-4 mb-6
       "
     >
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-1 min-w-0">
         <p className="text-gray-500 text-xs font-medium uppercase tracking-widest">
-          Connected Wallet
+          Signed in as
         </p>
-        <div className="flex items-center gap-3 mt-1">
-          <div>
-            <p className="text-xs text-gray-500 mb-0.5">STX Address</p>
-            <div className="flex items-center text-white text-sm font-mono">
-              {truncate(addresses?.stx ?? "", 10)}
-              <CopyButton text={addresses?.stx ?? ""} />
-            </div>
-          </div>
-          {addresses?.btc && (
-            <>
-              <div className="w-px h-8 bg-white/[0.06]" />
-              <div>
-                <p className="text-xs text-gray-500 mb-0.5">BTC Address</p>
-                <div className="flex items-center text-white text-sm font-mono">
-                  {truncate(addresses.btc, 10)}
-                  <CopyButton text={addresses.btc} />
-                </div>
-              </div>
-            </>
-          )}
-        </div>
+        <p className="text-white text-sm font-medium truncate">{user.email}</p>
       </div>
 
-      <motion.button
-        whileHover={{ scale: 1.04 }}
-        whileTap={{ scale: 0.97 }}
-        onClick={disconnectWallet}
-        className="
-          flex items-center gap-2 px-4 py-2 rounded-xl
-          bg-white/[0.05] hover:bg-red-500/10 border border-white/10
-          hover:border-red-500/20 text-gray-400 hover:text-red-400
-          text-xs font-medium transition-all duration-200 cursor-pointer
-        "
-      >
-        <Unplug size={13} />
-        Disconnect
-      </motion.button>
+      <div className="flex flex-col gap-1 min-w-0">
+        <p className="text-gray-500 text-xs font-medium uppercase tracking-widest">
+          Bank account name
+        </p>
+        {user.bankAccountName ? (
+          <p className="text-white text-sm font-medium truncate">{user.bankAccountName}</p>
+        ) : (
+          // Without this, a buy order can't be placed at all — the release check
+          // has nothing to match the payer against.
+          <p className="text-amber-400 text-sm font-medium">Not set — required to buy</p>
+        )}
+      </div>
     </motion.div>
   );
 }
@@ -215,7 +197,7 @@ function TransferHistoryTable({
   onRefresh,
   refreshing,
 }: {
-  transfers: Transfer[];
+  transfers: Order[];
   loading: boolean;
   onRefresh: () => void;
   refreshing: boolean;
@@ -368,7 +350,7 @@ function TransferHistoryTable({
                     <td className="px-6 py-3.5">
                       {t.claimedTxId ? (
                         <a
-                          href={`https://explorer.hiro.so/txid/${t.claimedTxId}?chain=mainnet`}
+                          href={explorerTxUrl(t.chain, t.claimedTxId) ?? "#"}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="inline-flex items-center gap-1.5 text-xs font-medium text-[#f97316] hover:text-[#ea6c0e] transition-colors"
@@ -445,30 +427,27 @@ function TransferHistoryTable({
 // ─── History Page ─────────────────────────────────────────────────────────────
 
 export default function HistoryPage() {
-  const { connected, addresses } = useWallet();
-  const [transfers, setTransfers] = useState<Transfer[]>([]);
+  const { user, loading: authLoading } = useAuth();
+  const [transfers, setTransfers] = useState<Order[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async (isRefresh = false) => {
-    const walletAddr = addresses?.stx || addresses?.btc || "";
-    if (!walletAddr) return;
     try {
       if (isRefresh) setRefreshing(true);
       else setLoading(true);
-      const data = await fetchTransfers(walletAddr);
-      setTransfers(data);
+      setTransfers(await fetchOrders());
     } catch {
-      // silently fail — table will show empty state
+      // silently fail — table shows its empty state
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [addresses]);
+  }, []);
 
   useEffect(() => {
-    if (connected) load();
-  }, [connected, load]);
+    if (user) load();
+  }, [user, load]);
 
   return (
     <div className="relative z-10 min-h-screen flex flex-col">
@@ -498,15 +477,15 @@ export default function HistoryPage() {
             </Link>
           </div>
           <p className="text-gray-500 text-sm mt-1">
-            {connected
-              ? "All transfers associated with your wallet"
-              : "Connect your wallet to view your transfer history"}
+            {user
+              ? "Every order placed on your account"
+              : "Sign in to view your order history"}
           </p>
         </motion.div>
 
-        {connected ? (
+        {user ? (
           <>
-            <WalletHeader />
+            <AccountHeader />
             <TransferHistoryTable
               transfers={transfers}
               loading={loading}
@@ -514,8 +493,8 @@ export default function HistoryPage() {
               refreshing={refreshing}
             />
           </>
-        ) : (
-          <ConnectWall />
+        ) : authLoading ? null : (
+          <SignInWall />
         )}
       </main>
     </div>

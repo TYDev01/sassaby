@@ -9,6 +9,7 @@ import authRouter from "./routes/auth";
 import adminRouter from "./routes/admin";
 import adminOrdersRouter from "./routes/adminOrders";
 import ratesRouter from "./routes/rates";
+import banksRouter from "./routes/banks";
 import depositAddressesRouter from "./routes/depositAddresses";
 
 dotenv.config();
@@ -89,6 +90,7 @@ app.use("/api/orders", transferLimiter, ordersRouter);
 app.use("/api/admin/orders", adminLimiter, adminOrdersRouter);
 app.use("/api/admin", adminLimiter, adminRouter);
 app.use("/api/rates", publicLimiter, ratesRouter);
+app.use("/api/banks", publicLimiter, banksRouter);
 app.use("/api/deposit-addresses", publicLimiter, depositAddressesRouter);
 
 // ─── 404 handler ──────────────────────────────────────────────────────────────
