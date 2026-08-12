@@ -34,11 +34,6 @@ export default function Navbar() {
   const isAdmin = pathname === "/admin";
 
   function handleProfileClick() {
-    // Signed out, send them to sign-in and bring them back to where they were.
-    if (!user) {
-      router.push(`/signin?next=${encodeURIComponent(pathname)}`);
-      return;
-    }
     router.push("/history");
   }
 
@@ -77,43 +72,52 @@ export default function Navbar() {
         {/* Spacer to push icons to the right */}
         <div className="flex-1" />
 
+        {/* Signed out shows only "Sign in"; the profile and sign-out icons are
+            for an authenticated session. Nothing renders until the session
+            restore settles, so neither state flashes on first paint. */}
         <div className="flex items-center gap-1.5">
-          {/* Don't flash "Sign in" before the session restore settles. */}
-          {!loading && !user && (
-            <Link
-              href={`/signin?next=${encodeURIComponent(pathname)}`}
-              className="px-3.5 py-1.5 rounded-full text-sm font-medium text-gray-300 hover:text-white hover:bg-white/10 transition-colors"
-            >
-              Sign in
-            </Link>
-          )}
+          {!loading &&
+            (user ? (
+              <>
+                <motion.button
+                  whileHover={{ scale: 1.08 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={handleProfileClick}
+                  aria-label="Your orders"
+                  title={user.email}
+                  className={`w-9 h-9 flex items-center justify-center rounded-full transition-colors duration-200 cursor-pointer ${
+                    isAdmin
+                      ? "text-[#f97316] bg-[#f97316]/10"
+                      : "text-gray-400 hover:text-white hover:bg-white/10"
+                  }`}
+                >
+                  <User size={18} />
+                </motion.button>
 
-          <motion.button
-            whileHover={{ scale: 1.08 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={handleProfileClick}
-            aria-label={user ? "Your orders" : "Sign in"}
-            title={user?.email}
-            className={`w-9 h-9 flex items-center justify-center rounded-full transition-colors duration-200 cursor-pointer ${
-              isAdmin
-                ? "text-[#f97316] bg-[#f97316]/10"
-                : "text-gray-400 hover:text-white hover:bg-white/10"
-            }`}
-          >
-            <User size={18} />
-          </motion.button>
-
-          {!loading && user && (
-            <motion.button
-              whileHover={{ scale: 1.08 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={handleSignOut}
-              aria-label="Sign out"
-              className="w-9 h-9 flex items-center justify-center rounded-full text-gray-400 hover:text-white hover:bg-white/10 transition-colors duration-200 cursor-pointer"
-            >
-              <LogOut size={17} />
-            </motion.button>
-          )}
+                <motion.button
+                  whileHover={{ scale: 1.08 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={handleSignOut}
+                  aria-label="Sign out"
+                  className="w-9 h-9 flex items-center justify-center rounded-full text-gray-400 hover:text-white hover:bg-white/10 transition-colors duration-200 cursor-pointer"
+                >
+                  <LogOut size={17} />
+                </motion.button>
+              </>
+            ) : (
+              <Link
+                href={`/signin?next=${encodeURIComponent(pathname)}`}
+                className="
+                  min-w-[110px] px-7 py-2 rounded-full text-center
+                  text-sm font-semibold text-white
+                  bg-[#f97316] hover:bg-[#ea6c0e]
+                  shadow-lg shadow-[#f97316]/20
+                  transition-colors duration-200
+                "
+              >
+                Sign in
+              </Link>
+            ))}
         </div>
       </motion.header>
     </div>
