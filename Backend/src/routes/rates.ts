@@ -9,10 +9,18 @@ const router = Router();
 
 // ─── CoinGecko ID map (no API key required) ───────────────────────────────────
 
+// Keyed on token symbol alone: an asset's USD price does not depend on which
+// chain it moves over, so USDT on Tron and USDT on BSC share one entry. Every
+// token in lib/assets.ts needs a row here or a quote for it throws.
 const COINGECKO_IDS: Record<string, string> = {
-  STX: "blockstack",
-  BTC: "bitcoin",
-  USDCx: "usd-coin",  // Bridged USDC on Stacks — tracks USDC 1:1
+  BTC:  "bitcoin",
+  LTC:  "litecoin",
+  ETH:  "ethereum",
+  BNB:  "binancecoin",
+  TRX:  "tron",
+  SOL:  "solana",
+  USDT: "tether",
+  USDC: "usd-coin",
 };
 
 // ─── Token price cache (60s TTL) ─────────────────────────────────────────────

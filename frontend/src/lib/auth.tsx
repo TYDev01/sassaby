@@ -3,10 +3,10 @@
 /**
  * Session context.
  *
- * Identity now comes from an account rather than a connected wallet — the desk
- * spans eight networks, and a fiat credit has to be matched to a person, not to
- * an address. The Stacks wallet stays available as a convenience for signing
- * Stacks sends; it is no longer who you are.
+ * Identity comes from an account, not a connected wallet — the desk spans
+ * several networks, and a fiat credit has to be matched to a person, not to an
+ * address. Nothing in the client signs a transaction: every asset is deposited
+ * to a desk address, so there is no wallet to connect.
  */
 
 import {

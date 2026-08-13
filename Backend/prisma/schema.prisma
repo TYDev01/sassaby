@@ -64,7 +64,7 @@ model Transfer {
   sendAmount         Float
   sendToken          String
   /// Network the asset moves on.  Required: USDT is meaningless without it.
-  chain              String    @default("stacks")
+  chain              String    @default("bitcoin")
 
   usdEquivalent      Float
   receiveAmount      Float
@@ -128,7 +128,7 @@ model RateConfig {
 model DepositAddress {
   id        Int      @id @default(autoincrement())
   token     String
-  chain     String   @default("stacks")
+  chain     String   @default("bitcoin")
   address   String
   /// "self" | "bitget"
   kind      String   @default("self")

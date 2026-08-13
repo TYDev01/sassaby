@@ -1,22 +1,10 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import { ReactNode } from "react";
 import { AuthProvider } from "@/lib/auth";
 
-// Load WalletProvider only on the client — @stacks/connect uses browser APIs
-// that crash the Next.js SSR prerender if imported server-side.
-const WalletProvider = dynamic(
-  () => import("@/lib/wallet").then((m) => ({ default: m.WalletProvider })),
-  { ssr: false }
-);
-
-// AuthProvider wraps the wallet, not the other way round: identity is the
-// account now, and the wallet is an optional convenience for Stacks sends.
+// Identity is the account. There is no wallet connect any more: every asset is
+// deposited to a desk address, so nothing in the client signs a transaction.
 export default function ClientProviders({ children }: { children: ReactNode }) {
-  return (
-    <AuthProvider>
-      <WalletProvider>{children}</WalletProvider>
-    </AuthProvider>
-  );
+  return <AuthProvider>{children}</AuthProvider>;
 }

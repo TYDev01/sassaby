@@ -24,22 +24,22 @@ const USER = {
 const SELL_BODY = {
   direction: "sell",
   sendAmount: 10,
-  sendToken: "STX",
-  chain: "stacks",
+  sendToken: "BTC",
+  chain: "bitcoin",
   receiveCurrency: "NGN",
   bank: "First Bank",
   bankCode: "011",
   accountNumber: "1234567890",
-  senderAddress: "SP2X0TZ59D5SZ8ACQ6YMCHHNR2ZN51Z32E2CJ173",
+  senderAddress: "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq",
 };
 
 const BUY_BODY = {
   direction: "buy",
   sendAmount: 10,
-  sendToken: "STX",
-  chain: "stacks",
+  sendToken: "BTC",
+  chain: "bitcoin",
   receiveCurrency: "NGN",
-  destinationAddress: "SP2X0TZ59D5SZ8ACQ6YMCHHNR2ZN51Z32E2CJ173",
+  destinationAddress: "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq",
 };
 
 // ─── Prisma delegate mocks ────────────────────────────────────────────────────
@@ -66,14 +66,14 @@ function installMocks(opts: MockOpts = {}) {
   // otherwise hit CoinGecko for real — slow, flaky, and it poisons the shared
   // 60s price cache for every suite that runs afterwards.
   sinon.stub(axios, "get").resolves({
-    data: { blockstack: { usd: 1.5 }, bitcoin: { usd: 60000 } },
+    data: { bitcoin: { usd: 60000 } },
   });
 
   p.depositAddress = {
     findUnique: sinon.stub().resolves(
       opts.depositRow === undefined
         ? {
-            id: 1, token: "STX", chain: "stacks", address: "SP_DESK_ADDR",
+            id: 1, token: "BTC", chain: "bitcoin", address: "BTC_DESK_ADDR",
             memo: "", label: "", kind: "self", active: true, updatedAt: new Date(),
           }
         : opts.depositRow
@@ -144,7 +144,7 @@ describe("POST /api/orders", () => {
 
     expect(res.status).to.equal(201);
     expect(res.body.status).to.equal("awaiting_deposit");
-    expect(res.body.depositAddress).to.equal("SP_DESK_ADDR");
+    expect(res.body.depositAddress).to.equal("BTC_DESK_ADDR");
   });
 
   it("creates a buy order awaiting_payment and exposes no deposit address", async () => {
@@ -164,7 +164,7 @@ describe("POST /api/orders", () => {
     const res = await request(app)
       .post("/api/orders")
       .set("Authorization", `Bearer ${token}`)
-      // USDCx exists on Stacks, not on Tron.
+      // BTC exists on Bitcoin, not on Tron.
       .send({ ...SELL_BODY, chain: "tron" });
 
     expect(res.status).to.equal(400);
@@ -197,7 +197,7 @@ describe("POST /api/orders", () => {
       installMocks({
         openOrder: {
           id: "open-order-1", userId: USER.id, status: "awaiting_payment",
-          direction: "buy", sendAmount: 1, sendToken: "STX", chain: "stacks",
+          direction: "buy", sendAmount: 1, sendToken: "BTC", chain: "bitcoin",
           usdEquivalent: 1, receiveAmount: 1, receiveCurrency: "NGN", fee: 0, feeRate: 0,
           createdAt: new Date(),
         },

@@ -1,10 +1,15 @@
 import { expect } from "chai";
 import sinon from "sinon";
 import axios from "axios";
-import { getTokenPriceUSD } from "../../src/routes/rates";
+import { getTokenPriceUSD, __resetRateCaches } from "../../src/routes/rates";
 
 describe("getTokenPriceUSD()", () => {
-  afterEach(() => sinon.restore());
+  // The price cache is memoised for 60s and outlives a single test, so a
+  // successful fetch here would otherwise satisfy the "no price data" case below.
+  afterEach(() => {
+    sinon.restore();
+    __resetRateCaches();
+  });
 
   it("throws for an unsupported token", async () => {
     try {
@@ -15,13 +20,13 @@ describe("getTokenPriceUSD()", () => {
     }
   });
 
-  it("returns the price from CoinGecko for STX", async () => {
+  it("returns the price from CoinGecko for USDT", async () => {
     sinon.stub(axios, "get").resolves({
-      data: { blockstack: { usd: 1.23 } },
+      data: { tether: { usd: 1.0 } },
     });
 
-    const price = await getTokenPriceUSD("STX");
-    expect(price).to.equal(1.23);
+    const price = await getTokenPriceUSD("USDT");
+    expect(price).to.equal(1.0);
   });
 
   it("returns the price for BTC", async () => {
@@ -37,7 +42,7 @@ describe("getTokenPriceUSD()", () => {
     sinon.stub(axios, "get").resolves({ data: {} });
 
     try {
-      await getTokenPriceUSD("USDCx");
+      await getTokenPriceUSD("USDT");
       expect.fail("Should have thrown");
     } catch (err: unknown) {
       expect((err as Error).message).to.include("No price data");

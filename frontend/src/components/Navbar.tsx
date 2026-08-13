@@ -9,7 +9,7 @@ import { useAuth } from "@/lib/auth";
 
 // ─── Logo ─────────────────────────────────────────────────────────────────────
 
-function StacksBridgeLogo() {
+function SassabyLogo() {
   return (
     <div className="flex items-center cursor-pointer select-none drop-shadow-xl">
       <Image
@@ -66,7 +66,7 @@ export default function Navbar() {
           aria-label="Sassaby home"
           className="absolute -top-10 left-6 z-50 drop-shadow-[0_10px_20px_rgba(0,0,0,0.6)]"
         >
-          <StacksBridgeLogo />
+          <SassabyLogo />
         </Link>
 
         {/* Spacer to push icons to the right */}

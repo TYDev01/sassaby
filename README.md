@@ -1,6 +1,6 @@
 # Sassaby
 
-A crypto off-ramp platform that bridges Stacks assets (STX, USDCx, BTC) to local bank accounts across Africa. Users connect their Stacks wallet and send funds directly to any local bank — no lengthy signup required.
+A crypto off-ramp platform that bridges crypto to local bank accounts across Africa. Users deposit to a desk address and receive fiat in any local bank — no wallet connection required.
 
 **Live:** [sassaby.vercel.app](https://sassaby.vercel.app)
 
@@ -8,8 +8,8 @@ A crypto off-ramp platform that bridges Stacks assets (STX, USDCx, BTC) to local
 
 ## Features
 
-- **Stacks wallet connect** — sign in with Hiro Wallet via `@stacks/connect`
-- **Multi-token support** — off-ramp STX, USDCx, or BTC
+- **Account sign-in** — email accounts, since a fiat credit has to match a person, not an address
+- **Multi-token support** — BTC self-custody, plus USDT/USDC/ETH/BNB/TRX/SOL/LTC routed through Bitget
 - **Multi-currency payouts** — receive NGN, GHS, or KES
 - **Real-time rates** — live exchange rates fetched from the backend, admin-configurable
 - **1.5% flat fee** — deducted automatically, shown before confirmation
@@ -31,7 +31,6 @@ A crypto off-ramp platform that bridges Stacks assets (STX, USDCx, BTC) to local
 | Tailwind CSS v4 | Styling |
 | shadcn/ui | UI primitives |
 | Framer Motion | Animations |
-| @stacks/connect | Stacks wallet integration |
 | react-qr-code | QR code display in transfer modal |
 | Lucide React | Icons |
 | Sonner | Toast notifications |
@@ -89,11 +88,10 @@ Sassaby/
         │   ├── AdminDashboard.tsx        # Admin: overview, history, addresses
         │   ├── AdminChainHistory.tsx     # On-chain transaction history
         │   ├── HistoryPage.tsx           # User transfer history
-        │   ├── ClientProviders.tsx       # Dynamic wallet provider (SSR-safe)
+        │   ├── ClientProviders.tsx       # Auth context provider
         │   └── MouseGlow.tsx             # Cursor glow effect
         └── lib/
             ├── api.ts            # All backend API calls
-            ├── wallet.tsx        # Stacks wallet helpers
             └── utils.ts          # Shared utilities
 ```
 
@@ -145,7 +143,8 @@ Open [http://localhost:3000](http://localhost:3000).
 | Variable | Description |
 |---|---|
 | `NEXT_PUBLIC_API_URL` | Backend URL |
-| `NEXT_PUBLIC_ADMIN_ADDRESS` | Stacks address with admin access |
+| `BACKEND_URL` | Backend origin for server-side route handlers (never `NEXT_PUBLIC_`) |
+| `ADMIN_API_KEY` | Admin API key, server-side only |
 
 ---
 
@@ -163,11 +162,11 @@ Railway reads `Backend/railway.toml` for build and start commands. Set **Root Di
 
 ## Admin Access
 
-The admin dashboard at `/admin` is protected — only the wallet address set in `NEXT_PUBLIC_ADMIN_ADDRESS` can access it. From the dashboard you can:
+The admin dashboard at `/admin` is protected — only an account flagged as an operator can reach it. From the dashboard you can:
 
 - View platform stats and transfer history
-- Update live exchange rates (STX/NGN, USDCx/NGN, BTC/NGN, and GHS/KES equivalents)
-- Manage deposit addresses per token (STX, USDCx, BTC)
+- Set the USD→fiat rate per currency, or let it derive from your published Bitget P2P ads
+- Manage deposit addresses per (token, chain) pair
 
 ---
 
