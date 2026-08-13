@@ -28,6 +28,9 @@ model User {
   /// "light" until a threshold forces more.  See task.md §7.
   kycTier         String   @default("light")
   banned          Boolean  @default(false)
+  /// Operator access. Grant deliberately in SQL — there is no self-serve path,
+  /// and no request body may ever set it.
+  isAdmin         Boolean  @default(false)
 
   orders          Transfer[]
 }

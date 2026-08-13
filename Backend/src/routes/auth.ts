@@ -19,6 +19,10 @@ const router = Router();
 const MAX_NAME_LEN = 120;
 const MAX_PHONE_LEN = 20;
 
+/**
+ * `isAdmin` is read-only here on purpose: it is never taken from a request body,
+ * on register or on profile update. Operator access is granted in SQL only.
+ */
 function publicUser(u: {
   id: string;
   email: string;
@@ -26,6 +30,7 @@ function publicUser(u: {
   phone: string;
   bankAccountName: string;
   kycTier: string;
+  isAdmin: boolean;
 }) {
   return {
     id:              u.id,
@@ -34,6 +39,7 @@ function publicUser(u: {
     phone:           u.phone,
     bankAccountName: u.bankAccountName,
     kycTier:         u.kycTier,
+    isAdmin:         u.isAdmin,
   };
 }
 

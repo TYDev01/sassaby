@@ -34,8 +34,9 @@ import { toast } from "sonner";
 import Navbar from "@/components/Navbar";
 import { STATUS_LABEL, STATUS_STYLE } from "@/lib/orderStatus";
 import { fetchAdminStats, AdminStats, Order, fetchRateConfig, updateRateConfig, RateConfig, RateMode, fetchDepositAddresses, upsertDepositAddress, deleteDepositAddress, DepositAddress, AssetSpec } from "@/lib/api";
-import { MapPin, Trash2 } from "lucide-react";
-import { useWallet } from "@/lib/wallet";
+import { MapPin, Trash2, Lock } from "lucide-react";
+import Link from "next/link";
+import { useAuth } from "@/lib/auth";
 import AdminChainHistory from "@/components/AdminChainHistory";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -281,12 +282,14 @@ function CurrencyDistributionChart({ data }: { data: AdminStats["volumeByCurrenc
 
 // ─── Admin address ────────────────────────────────────────────────────────────
 
-const ADMIN_ADDRESS = process.env.NEXT_PUBLIC_ADMIN_ADDRESS;
+// ─── Auth gates ───────────────────────────────────────────────────────────────
+//
+// Operator access is the `isAdmin` flag on the signed-in account, granted in SQL.
+// These gates are presentation only — the actual protection lives in the Next.js
+// admin proxy routes (src/app/api/_requireAdmin.ts), which authorise the caller
+// before attaching ADMIN_API_KEY. The old wallet-address check protected nothing.
 
-// ─── Auth Gate — not connected ────────────────────────────────────────────────
-
-function ConnectGate() {
-  const { connectWallet, connecting } = useWallet();
+function SignInGate() {
   return (
     <motion.div
       initial={{ opacity: 0, y: 24 }}
@@ -299,35 +302,30 @@ function ConnectGate() {
         transition={{ duration: 2.8, repeat: Infinity, ease: "easeInOut" }}
         className="w-20 h-20 rounded-2xl mb-8 bg-[#f97316]/10 border border-[#f97316]/20 flex items-center justify-center"
       >
-        <ShieldAlert size={36} className="text-[#f97316]" />
+        <Lock size={34} className="text-[#f97316]" />
       </motion.div>
+
       <h2 className="text-white text-2xl font-bold tracking-tight mb-3">
-        Admin access required
+        Sign in to continue
       </h2>
       <p className="text-gray-400 text-sm max-w-xs mb-8 leading-relaxed">
-        Connect your authorised Stacks wallet to access the admin dashboard.
+        The operator dashboard requires an account with admin access.
       </p>
-      <motion.button
-        whileHover={{ scale: 1.04 }}
-        whileTap={{ scale: 0.97 }}
-        onClick={connectWallet}
-        disabled={connecting}
-        className="flex items-center gap-2.5 px-8 py-3.5 rounded-xl bg-[#f97316] hover:bg-[#ea6c0e] text-white font-semibold text-sm shadow-lg shadow-[#f97316]/20 transition-all duration-200 cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed"
-      >
-        {connecting ? (
-          <Loader2 size={18} className="animate-spin shrink-0" />
-        ) : (
-          <Wallet size={18} className="shrink-0" />
-        )}
-        {connecting ? "Connecting…" : "Connect Wallet"}
-      </motion.button>
+
+      <Link href="/signin?next=/admin">
+        <motion.div
+          whileHover={{ scale: 1.04 }}
+          whileTap={{ scale: 0.97 }}
+          className="px-8 py-3.5 rounded-xl bg-[#f97316] hover:bg-[#ea6c0e] text-white font-semibold text-sm shadow-lg shadow-[#f97316]/20 transition-all duration-200 cursor-pointer"
+        >
+          Sign in
+        </motion.div>
+      </Link>
     </motion.div>
   );
 }
 
-// ─── Auth Gate — wrong address ────────────────────────────────────────────────
-
-function UnauthorisedGate() {
+function UnauthorisedGate({ email }: { email: string }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 24 }}
@@ -335,19 +333,16 @@ function UnauthorisedGate() {
       transition={{ duration: 0.5, ease: "easeOut" }}
       className="flex flex-col items-center justify-center flex-1 py-32 px-6 text-center"
     >
-      <motion.div
-        animate={{ rotate: [0, -6, 6, -4, 4, 0] }}
-        transition={{ duration: 0.6, delay: 0.3 }}
-        className="w-20 h-20 rounded-2xl mb-8 bg-red-500/10 border border-red-500/20 flex items-center justify-center"
-      >
-        <ShieldAlert size={36} className="text-red-400" />
-      </motion.div>
+      <div className="w-20 h-20 rounded-2xl mb-8 bg-red-500/10 border border-red-500/20 flex items-center justify-center">
+        <Lock size={34} className="text-red-400" />
+      </div>
+
       <h2 className="text-white text-2xl font-bold tracking-tight mb-3">
-        Unauthorised
+        No operator access
       </h2>
       <p className="text-gray-400 text-sm max-w-sm leading-relaxed">
-        The connected wallet address does not have admin privileges. Please
-        connect with the authorised admin wallet.
+        <span className="text-gray-300 font-medium">{email}</span> is signed in but
+        does not have admin access on this desk.
       </p>
     </motion.div>
   );
@@ -825,7 +820,7 @@ function DepositAddressManager() {
 // ─── Admin Dashboard ──────────────────────────────────────────────────────────
 
 export default function AdminDashboard() {
-  const { connected, addresses } = useWallet();
+  const { user, loading: authLoading } = useAuth();
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -833,22 +828,30 @@ export default function AdminDashboard() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [tab, setTab] = useState<"overview" | "history" | "addresses">("overview");
 
-  // Derive auth state
-  const isAuthorised = connected && addresses?.stx === ADMIN_ADDRESS;
-  const isWrongAddress = connected && addresses?.stx !== ADMIN_ADDRESS;
+  const isAuthorised = !!user?.isAdmin;
+  const isWrongAddress = !!user && !user.isAdmin;
 
-  // Fire Sonner error toast when wrong address connects
+  // The BTC receiving address is admin config now, not a connected wallet.
+  const [btcDepositAddress, setBtcDepositAddress] = useState<string | undefined>();
+  useEffect(() => {
+    if (!isAuthorised) return;
+    fetchDepositAddresses()
+      .then((d) => setBtcDepositAddress(d.addresses["BTC:bitcoin"]?.address))
+      .catch(() => {});
+  }, [isAuthorised]);
+
+  // Warn once when a signed-in account lacks operator access.
   const toastedRef = useRef(false);
   useEffect(() => {
     if (isWrongAddress && !toastedRef.current) {
       toastedRef.current = true;
-      toast.error("Unauthorised wallet", {
-        description: `Address ${addresses?.stx?.slice(0, 8)}…${addresses?.stx?.slice(-4)} does not have admin access.`,
+      toast.error("No operator access", {
+        description: `${user?.email} does not have admin access on this desk.`,
         duration: 6000,
       });
     }
     if (!isWrongAddress) toastedRef.current = false;
-  }, [isWrongAddress, addresses?.stx]);
+  }, [isWrongAddress, user?.email]);
 
   const load = useCallback(async (isRefresh = false) => {
     try {
@@ -874,12 +877,13 @@ export default function AdminDashboard() {
   }, [load, isAuthorised]);
 
   // ── Auth gates ────────────────────────────────────────────────────────────
-  if (!connected) {
+  if (authLoading) return null;
+  if (!user) {
     return (
       <div className="relative z-10 min-h-screen flex flex-col">
         <Navbar />
         <main className="flex-1 flex flex-col items-center justify-center">
-          <ConnectGate />
+          <SignInGate />
         </main>
       </div>
     );
@@ -890,7 +894,7 @@ export default function AdminDashboard() {
       <div className="relative z-10 min-h-screen flex flex-col">
         <Navbar />
         <main className="flex-1 flex flex-col items-center justify-center">
-          <UnauthorisedGate />
+          <UnauthorisedGate email={user?.email ?? ""} />
         </main>
       </div>
     );
@@ -1064,7 +1068,7 @@ export default function AdminDashboard() {
         )}
 
         {tab === "history" && (
-          <AdminChainHistory btcAddress={addresses?.btc ?? undefined} />
+          <AdminChainHistory btcAddress={btcDepositAddress} />
         )}
 
         {tab === "addresses" && (
