@@ -53,6 +53,10 @@ export const P2P = {
   userInfo:     process.env.BITGET_PATH_USER_INFO     ?? `${V3}/user-info`,
   /** PUBLIC market book across all merchants. */
   adList:       process.env.BITGET_PATH_AD_LIST       ?? `${V3}/ad-list`,
+  /** The desk's OWN ads, live and historical. */
+  myAds:        process.env.BITGET_PATH_MY_ADS        ?? `${V3}/my-ads`,
+  pendingOrders:process.env.BITGET_PATH_PENDING_ORDERS?? `${V3}/pending-orders`,
+  allOrders:    process.env.BITGET_PATH_ALL_ORDERS    ?? `${V3}/all-orders`,
   adCreate:     process.env.BITGET_PATH_AD_CREATE     ?? `${V3}/ad-create`,
   adUpdate:     process.env.BITGET_PATH_AD_UPDATE     ?? `${V3}/ad-update`,
 } as const;
@@ -218,33 +222,6 @@ export async function fetchMerchantInfo(): Promise<MerchantInfo> {
   return signedGet<MerchantInfo>(P2P.userInfo);
 }
 
-/**
- * Best-effort read of the desk's own ads on UTA.
- *
- * v2 had a dedicated "my ads" endpoint (`advList`); no v3 equivalent is
- * confirmed, and `ad-list` is the PUBLIC book. So this pulls the public book and
- * filters to rows whose `merchantName` matches this account's nickname.
- *
- * Deliberately not the pricing source: the public book is paged 10 at a time, so
- * an uncompetitive ad can fall off page one and silently vanish from the result.
- * `DeskAd` — written when the desk publishes — is the authority for pricing.
- * This is for display and drift-checking.
- */
-export async function fetchOwnAds(
-  side: "buy" | "sell",
-  opts: { token?: string; fiat?: string; nickName?: string } = {}
-): Promise<Ad[]> {
-  const nickName = opts.nickName ?? (await fetchMerchantInfo()).nickName ?? "";
-  if (!nickName) return [];
-
-  const book = await fetchAdList({
-    token: opts.token ?? "USDT",
-    fiat: opts.fiat ?? "NGN",
-    side,
-  });
-  return book.filter((a) => a.merchantName === nickName);
-}
-
 // ─── Market book ──────────────────────────────────────────────────────────────
 
 export interface RawAd {
@@ -259,6 +236,7 @@ export interface RawAd {
   minAmount?: string | number;
   maxAmount?: string | number;
   merchantName?: string;
+  merchantId?: string;
   [k: string]: unknown;
 }
 
@@ -274,6 +252,7 @@ export interface Ad {
   minAmount: number;
   maxAmount: number;
   merchantName: string;
+  merchantId: string;
 }
 
 function num(v: unknown): number {
@@ -287,9 +266,7 @@ function normaliseAd(raw: RawAd): Ad | null {
 
   const side = String(raw.side ?? "").toLowerCase();
   return {
-    // v2 calls it advNo, v3 calls it advId.
     advId: String(raw.advId ?? raw.advNo ?? ""),
-    // v2 calls it coin, v3 calls it token.
     token: String(raw.token ?? raw.coin ?? "").toUpperCase(),
     fiat: String(raw.fiat ?? "").toUpperCase(),
     side: side === "buy" ? "buy" : side === "sell" ? "sell" : "unknown",
@@ -298,15 +275,19 @@ function normaliseAd(raw: RawAd): Ad | null {
     minAmount: num(raw.minAmount),
     maxAmount: num(raw.maxAmount),
     merchantName: String(raw.merchantName ?? ""),
+    merchantId: String(raw.merchantId ?? ""),
   };
 }
 
 /**
- * The public order book for a (token, fiat, side).
+ * The public order book for a (token, fiat) pair.
  *
- * This is the whole market, not only this desk's ads — it returns `merchantName`
- * for each row. Useful for deciding where to price, and for locating the desk's
- * own ad by `advId`. Bitget caps `limit` at 10 per page.
+ * `side` is what YOU want to do — NOT the side of the ads returned. Verified
+ * against the live book: `side=sell` (you want to sell) returns merchants' BUY
+ * ads, and `side=buy` returns their SELL ads. Reading it the other way round
+ * inverts the whole rate, so it is spelled out here rather than inferred.
+ *
+ * Bitget caps `limit` at 10 per page.
  */
 export async function fetchAdList(params: {
   token: string;
@@ -316,17 +297,181 @@ export async function fetchAdList(params: {
   pageNum?: number;
   limit?: number;
 }): Promise<Ad[]> {
-  const data = await signedGet<RawAd[] | { list?: RawAd[]; adList?: RawAd[] }>(P2P.adList, {
-    token: params.token.toUpperCase(),
-    fiat: params.fiat.toUpperCase(),
-    side: params.side,
-    amount: params.amount,
-    pageNum: params.pageNum ?? 1,
-    limit: Math.min(params.limit ?? 10, 10),
-  });
+  const data = await signedGet<RawAd[] | { items?: RawAd[]; list?: RawAd[]; adList?: RawAd[] }>(
+    P2P.adList,
+    {
+      token: params.token.toUpperCase(),
+      fiat: params.fiat.toUpperCase(),
+      side: params.side,
+      amount: params.amount,
+      pageNum: params.pageNum ?? 1,
+      limit: Math.min(params.limit ?? 10, 10),
+    }
+  );
 
-  const rows: RawAd[] = Array.isArray(data) ? data : data?.list ?? data?.adList ?? [];
+  const rows: RawAd[] = Array.isArray(data)
+    ? data
+    : data?.items ?? data?.list ?? data?.adList ?? [];
   return rows.map(normaliseAd).filter((a): a is Ad => a !== null);
+}
+
+/** Ad statuses that mean the ad is NOT on the book. */
+const DEAD_AD_STATUSES = ["delist", "remove", "offline", "closed", "expired", "cancel"];
+
+export interface MyAd extends Ad {
+  priceType: string;
+  status: string;
+  /** True when the ad is actually published and tradable. */
+  live: boolean;
+  soldAmount: number;
+  payMethodIds: string[];
+  updatedTime: number;
+}
+
+function normaliseMyAd(raw: RawAd): MyAd | null {
+  const base = normaliseAd(raw);
+  if (!base) return null;
+
+  const status = String(raw.status ?? "").toLowerCase();
+  // Denylist rather than allowlist: we have observed "delist" and "remove" but
+  // not yet the live value, and an allowlist we guessed wrong would price
+  // nothing at all. Unknown statuses are logged so the list can be tightened.
+  const live = !DEAD_AD_STATUSES.includes(status);
+  if (live && status && status !== "online" && status !== "listed") {
+    console.warn(`[BITGET] Unrecognised ad status "${status}" treated as live (ad ${base.advId})`);
+  }
+
+  const methods = Array.isArray(raw.payMethods)
+    ? (raw.payMethods as Array<{ payMethodId?: string }>)
+        .map((m) => String(m?.payMethodId ?? ""))
+        .filter(Boolean)
+    : [];
+
+  return {
+    ...base,
+    priceType: String(raw.priceType ?? "fixed"),
+    status,
+    live,
+    soldAmount: num(raw.soldAmount),
+    payMethodIds: methods,
+    updatedTime: num(raw.updatedTime),
+  };
+}
+
+/**
+ * The desk's own advertisements — live and historical.
+ *
+ * `status` matters: a delisted ad still comes back here. Pricing off one would
+ * quote a rate the desk is not actually offering, so callers must filter on
+ * `live`. The API ignores a `side` filter, so filter client-side.
+ */
+export async function fetchMyAds(): Promise<MyAd[]> {
+  const data = await signedGet<{ items?: RawAd[] } | RawAd[]>(P2P.myAds, {});
+  const rows: RawAd[] = Array.isArray(data) ? data : data?.items ?? [];
+  return rows.map(normaliseMyAd).filter((a): a is MyAd => a !== null);
+}
+
+/**
+ * Payment method IDs this desk has used before.
+ *
+ * Bitget exposes no payment-method listing endpoint (probed: payment-methods,
+ * pay-methods, payment-method-list, user-pay-methods all 404), but past ads
+ * carry the IDs, so the desk's own history is the catalogue.
+ */
+export async function fetchKnownPayMethodIds(): Promise<string[]> {
+  const ads = await fetchMyAds();
+  return [...new Set(ads.flatMap((a) => a.payMethodIds))].sort();
+}
+
+// ─── Orders ───────────────────────────────────────────────────────────────────
+
+export interface PendingOrder {
+  orderId: string;
+  side: string;
+  token: string;
+  fiat: string;
+  price: number;
+  amount: number;
+  quantity: number;
+  fee: number;
+  counterparty: string;
+  /** "pending_payment" | "pending_release" | "in_appeal" */
+  status: string;
+  createdTime: number;
+  updatedTime: number;
+}
+
+function mapOrders(items: Array<Record<string, unknown>>): PendingOrder[] {
+  return items.map((o) => ({
+    orderId: String(o.orderId ?? ""),
+    side: String(o.side ?? ""),
+    token: String(o.token ?? ""),
+    fiat: String(o.fiat ?? ""),
+    price: num(o.price),
+    amount: num(o.amount),
+    quantity: num(o.quantity),
+    fee: num(o.fee),
+    counterparty: String(o.counterparty ?? ""),
+    status: String(o.status ?? ""),
+    createdTime: num(o.createdTime),
+    updatedTime: num(o.updatedTime),
+  }));
+}
+
+/** Live orders only: pending_payment, pending_release or in_appeal. */
+export async function fetchPendingOrders(params: {
+  side?: "buy" | "sell";
+  limit?: number;
+  cursor?: string;
+} = {}): Promise<{ orders: PendingOrder[]; nextId: string }> {
+  const data = await signedGet<{ items?: Array<Record<string, unknown>>; nextId?: string }>(
+    P2P.pendingOrders,
+    {
+      side: params.side,
+      limit: Math.min(params.limit ?? 10, 10),
+      cursor: params.cursor,
+    }
+  );
+  return { orders: mapOrders(data?.items ?? []), nextId: String(data?.nextId ?? "") };
+}
+
+export type OrderStatusFilter =
+  | "pending_payment"
+  | "pending_release"
+  | "completed"
+  | "cancelled"
+  | "in_appeal";
+
+/**
+ * Every order, live and finished, with an optional status filter.
+ *
+ * Bitget limits the queryable window: 90 days total, 30 days per single query.
+ * Without startTime it returns the most recent page, which is what the UI wants.
+ *
+ * `limit` is capped at 10 — the API rejects anything higher with
+ * "40017 Parameter verification failed limit: (0,10]". Clamped here rather than
+ * trusted from the caller.
+ */
+export async function fetchAllOrders(params: {
+  status?: OrderStatusFilter;
+  side?: "buy" | "sell";
+  limit?: number;
+  cursor?: string;
+  startTime?: number;
+  endTime?: number;
+} = {}): Promise<{ orders: PendingOrder[]; nextId: string }> {
+  const data = await signedGet<{ items?: Array<Record<string, unknown>>; nextId?: string }>(
+    P2P.allOrders,
+    {
+      status: params.status,
+      side: params.side,
+      limit: Math.min(Math.max(params.limit ?? 10, 1), 10),
+      cursor: params.cursor,
+      startTime: params.startTime,
+      endTime: params.endTime,
+    }
+  );
+  return { orders: mapOrders(data?.items ?? []), nextId: String(data?.nextId ?? "") };
 }
 
 // ─── Ad management ────────────────────────────────────────────────────────────

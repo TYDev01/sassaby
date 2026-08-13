@@ -21,6 +21,7 @@
  */
 
 import { prisma } from "./prisma";
+import { fetchMyAds, isConfigured, MyAd } from "./bitget";
 
 /** Which side of the desk's book a quote sits on. */
 export type DeskSide = "buy" | "sell";
@@ -68,12 +69,34 @@ export async function getBitgetRate(
 
   let result: DeskRate | null = null;
 
-  // The DeskAd mirror is the pricing authority.
-  //
-  // v2 had a dedicated "my ads" endpoint; UTA v3 exposes only the PUBLIC ad book,
-  // paged 10 at a time, so an uncompetitive ad can drop off page one and appear
-  // to have vanished. Pricing off that would silently swap the rate. The mirror
-  // records exactly what the desk published, which is what a quote must honour.
+  // Live ads from Bitget are the authority; the DeskAd mirror is the fallback
+  // for when that read fails, so a Bitget blip doesn't take pricing down.
+  if (isConfigured()) {
+    try {
+      const mine: MyAd[] = await fetchMyAds();
+      const usable = mine.filter(
+        (a) =>
+          // A delisted ad still comes back from my-ads. Pricing off one would
+          // quote a rate the desk is not actually offering.
+          a.live &&
+          a.side === side &&
+          a.fiat === fiat &&
+          USD_REFERENCE_TOKENS.includes(a.token)
+      );
+      if (usable.length > 0) {
+        const best =
+          side === "buy"
+            ? usable.reduce((m, a) => (a.price < m.price ? a : m))
+            : usable.reduce((m, a) => (a.price > m.price ? a : m));
+        result = { rate: best.price, source: "bitget", advId: best.advId };
+        cache.set(key, { rate: result, expiresAt: Date.now() + CACHE_TTL_MS });
+        return result;
+      }
+    } catch (err) {
+      console.warn("[RATES] Live ad read failed, falling back to mirror:", (err as Error).message);
+    }
+  }
+
   try {
     const ads = await prisma.deskAd.findMany({
       where: {
