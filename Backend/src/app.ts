@@ -8,6 +8,7 @@ import ordersRouter from "./routes/orders";
 import authRouter from "./routes/auth";
 import adminRouter from "./routes/admin";
 import adminOrdersRouter from "./routes/adminOrders";
+import adminBitgetRouter from "./routes/adminBitget";
 import ratesRouter from "./routes/rates";
 import banksRouter from "./routes/banks";
 import depositAddressesRouter from "./routes/depositAddresses";
@@ -88,6 +89,7 @@ app.get("/health", (_req, res) => {
 app.use("/api/auth", authLimiter, authRouter);
 app.use("/api/orders", transferLimiter, ordersRouter);
 app.use("/api/admin/orders", adminLimiter, adminOrdersRouter);
+app.use("/api/admin/bitget", adminLimiter, adminBitgetRouter);
 app.use("/api/admin", adminLimiter, adminRouter);
 app.use("/api/rates", publicLimiter, ratesRouter);
 app.use("/api/banks", publicLimiter, banksRouter);
