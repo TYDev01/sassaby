@@ -20,6 +20,7 @@ export interface AuthedUser {
   fullName: string;
   bankAccountName: string;
   kycTier: string;
+  isAdmin: boolean;
 }
 
 declare global {
@@ -69,6 +70,7 @@ export async function userAuth(
     fullName:        user.fullName,
     bankAccountName: user.bankAccountName,
     kycTier:         user.kycTier,
+    isAdmin:         user.isAdmin,
   };
   next();
 }

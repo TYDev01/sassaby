@@ -1,31 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireAdmin, isFailure, adminHeaders } from "../../_requireAdmin";
 
 const BACKEND = (process.env.BACKEND_URL ?? "http://localhost:4000").replace(/\/$/, "");
-const ADMIN_KEY = process.env.ADMIN_API_KEY ?? "";
 
+/** Read-only: the quote endpoint already exposes the effective rate publicly. */
 export async function GET() {
-  if (!ADMIN_KEY) {
-    return NextResponse.json({ error: "Admin key not configured." }, { status: 503 });
-  }
-  const res = await fetch(`${BACKEND}/api/rates/config`, {
-    cache: "no-store",
-    headers: { Authorization: `Bearer ${ADMIN_KEY}` },
-  });
+  const res = await fetch(`${BACKEND}/api/rates/config`, { cache: "no-store" });
   const data = await res.json();
   return NextResponse.json(data, { status: res.status });
 }
 
 export async function POST(req: NextRequest) {
-  if (!ADMIN_KEY) {
-    return NextResponse.json({ error: "Admin key not configured." }, { status: 503 });
-  }
+  const check = await requireAdmin(req);
+  if (isFailure(check)) return check.response;
+
   const body = await req.json();
   const res = await fetch(`${BACKEND}/api/rates/config`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${ADMIN_KEY}`,
-    },
+    headers: { "Content-Type": "application/json", ...adminHeaders() },
     body: JSON.stringify(body),
   });
   const data = await res.json();

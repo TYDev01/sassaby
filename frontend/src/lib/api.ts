@@ -66,6 +66,8 @@ export interface User {
   phone: string;
   bankAccountName: string;
   kycTier: string;
+  /** Operator access. Server-granted only — never settable from the client. */
+  isAdmin: boolean;
 }
 
 // ─── Base URLs ────────────────────────────────────────────────────────────────
@@ -342,7 +344,7 @@ export async function upsertDepositAddress(payload: {
 }): Promise<DepositAddress> {
   const res = await fetch(`${NEXTJS_ORIGIN}/api/deposit-addresses`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...adminAuthHeaders() },
     body: JSON.stringify(payload),
   });
   const data = await res.json();
@@ -353,6 +355,7 @@ export async function upsertDepositAddress(payload: {
 export async function deleteDepositAddress(token: string, chain: string): Promise<void> {
   await fetch(`${NEXTJS_ORIGIN}/api/deposit-addresses/${token}/${chain}`, {
     method: "DELETE",
+    headers: adminAuthHeaders(),
   });
 }
 
@@ -403,8 +406,18 @@ export interface AdminStats {
   recentTransfers: Order[];
 }
 
+/** Bearer header for the Next.js admin proxies, which authorise before
+ *  attaching the privileged key server-side. */
+function adminAuthHeaders(): Record<string, string> {
+  const token = getToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 export async function fetchAdminStats(): Promise<AdminStats> {
-  const res = await fetch(`${NEXTJS_ORIGIN}/api/admin/stats`, { cache: "no-store" });
+  const res = await fetch(`${NEXTJS_ORIGIN}/api/admin/stats`, {
+    cache: "no-store",
+    headers: adminAuthHeaders(),
+  });
   if (!res.ok) throw new Error("Failed to fetch admin stats");
   return res.json();
 }
@@ -425,7 +438,7 @@ export async function fetchRateConfig(): Promise<RateConfig> {
 export async function updateRateConfig(patch: Partial<RateConfig>): Promise<RateConfig> {
   const res = await fetch(`${NEXTJS_ORIGIN}/api/rates/config`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...adminAuthHeaders() },
     body: JSON.stringify(patch),
   });
   if (!res.ok) throw new Error("Failed to update rate config");

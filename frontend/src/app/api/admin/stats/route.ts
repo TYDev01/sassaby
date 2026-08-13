@@ -1,15 +1,15 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { requireAdmin, isFailure, adminHeaders } from "../../_requireAdmin";
 
 const BACKEND = (process.env.BACKEND_URL ?? "http://localhost:4000").replace(/\/$/, "");
-const ADMIN_KEY = process.env.ADMIN_API_KEY ?? "";
 
-export async function GET() {
-  if (!ADMIN_KEY) {
-    return NextResponse.json({ error: "Admin key not configured." }, { status: 503 });
-  }
+export async function GET(req: NextRequest) {
+  const check = await requireAdmin(req);
+  if (isFailure(check)) return check.response;
+
   const res = await fetch(`${BACKEND}/api/admin/stats`, {
     cache: "no-store",
-    headers: { Authorization: `Bearer ${ADMIN_KEY}` },
+    headers: adminHeaders(),
   });
   const data = await res.json();
   return NextResponse.json(data, { status: res.status });

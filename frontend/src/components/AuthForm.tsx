@@ -4,7 +4,7 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Loader2, Mail, Lock, User as UserIcon, Phone, Landmark } from "lucide-react";
+import { Loader2, Mail, Lock, User as UserIcon, Phone, Landmark, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 
 import { useAuth } from "@/lib/auth";
@@ -17,9 +17,12 @@ const MIN_PASSWORD = 10;
 
 function Field({
   icon: Icon,
+  trailing,
   ...props
 }: React.InputHTMLAttributes<HTMLInputElement> & {
   icon: React.ComponentType<{ size?: number; className?: string }>;
+  /** Rendered inside the field on the right — the reveal toggle, for passwords. */
+  trailing?: React.ReactNode;
 }) {
   return (
     <div className="relative">
@@ -29,13 +32,46 @@ function Field({
       />
       <input
         {...props}
-        className="
+        className={`
           w-full rounded-xl bg-[#111] border border-white/10
-          pl-10 pr-3.5 py-3.5 text-sm text-white placeholder:text-gray-600
+          pl-10 py-3.5 text-sm text-white placeholder:text-gray-600
           focus:outline-none focus:border-[#f97316]/60 transition-colors
-        "
+          ${trailing ? "pr-11" : "pr-3.5"}
+        `}
       />
+      {trailing && (
+        <div className="absolute right-1.5 top-1/2 -translate-y-1/2">{trailing}</div>
+      )}
     </div>
+  );
+}
+
+/** Reveal toggle for a password field. */
+function RevealToggle({
+  shown,
+  onToggle,
+}: {
+  shown: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      // Inside a <form> a bare button submits it — this must never do that.
+      type="button"
+      onClick={onToggle}
+      aria-label={shown ? "Hide password" : "Show password"}
+      aria-pressed={shown}
+      // Skipped in tab order: it's a convenience, and stopping between the
+      // password field and the submit button is more annoying than helpful.
+      tabIndex={-1}
+      className="
+        w-8 h-8 flex items-center justify-center rounded-lg
+        text-gray-500 hover:text-white hover:bg-white/10
+        transition-colors cursor-pointer
+      "
+    >
+      {shown ? <EyeOff size={16} /> : <Eye size={16} />}
+    </button>
   );
 }
 
@@ -51,6 +87,7 @@ export default function AuthForm({ mode }: { mode: Mode }) {
   const [phone, setPhone] = useState("");
   const [bankAccountName, setBankAccountName] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   /** Where to land after auth — preserves the page that bounced us here. */
   const next = params.get("next") || "/";
@@ -120,12 +157,18 @@ export default function AuthForm({ mode }: { mode: Mode }) {
 
             <Field
               icon={Lock}
-              type="password"
+              type={showPassword ? "text" : "password"}
               autoComplete={isSignUp ? "new-password" : "current-password"}
               placeholder={isSignUp ? `Password (${MIN_PASSWORD}+ characters)` : "Password"}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
+              trailing={
+                <RevealToggle
+                  shown={showPassword}
+                  onToggle={() => setShowPassword((v) => !v)}
+                />
+              }
             />
 
             {isSignUp && (
