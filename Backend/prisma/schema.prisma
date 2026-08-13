@@ -141,3 +141,30 @@ model DepositAddress {
 
   @@unique([token, chain])
 }
+
+// ─── Desk P2P ads ─────────────────────────────────────────────────────────────
+// Mirror of the ads this desk publishes on Bitget.
+//
+// Bitget's UTA P2P API exposes a PUBLIC ad book (`ad-list`, which returns every
+// merchant's ads, paged 10 at a time) but no confirmed "my ads" endpoint. So the
+// desk records what it publishes as it publishes it, and quotes price off this
+// table. `advId` ties each row back to the live ad for repricing.
+//
+// Caveat: an ad repriced in Bitget's web UI instead of through this API will
+// drift from this table until re-synced.
+
+model DeskAd {
+  advId     String   @id
+  token     String
+  fiat      String
+  /// "buy" = the desk buys crypto; "sell" = the desk sells crypto.
+  side      String
+  /// Fiat units per 1 unit of token, as published.
+  price     Float
+  priceType String   @default("fixed")
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([fiat, side, active])
+}
