@@ -34,7 +34,10 @@ import { toast } from "sonner";
 import Navbar from "@/components/Navbar";
 import { STATUS_LABEL, STATUS_STYLE } from "@/lib/orderStatus";
 import { fetchAdminStats, AdminStats, Order, fetchRateConfig, updateRateConfig, RateConfig, RateMode, fetchDepositAddresses, upsertDepositAddress, deleteDepositAddress, DepositAddress, AssetSpec } from "@/lib/api";
-import { MapPin, Trash2, Lock } from "lucide-react";
+import { MapPin, Trash2, Lock, Megaphone, Inbox } from "lucide-react";
+import AdBookManager from "@/components/AdBookManager";
+import BitgetOrders from "@/components/BitgetOrders";
+import MarketRates from "@/components/MarketRates";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth";
 import AdminChainHistory from "@/components/AdminChainHistory";
@@ -826,7 +829,7 @@ export default function AdminDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [tab, setTab] = useState<"overview" | "history" | "addresses">("overview");
+  const [tab, setTab] = useState<"overview" | "history" | "addresses" | "ads" | "orders" | "rates">("overview");
 
   const isAuthorised = !!user?.isAdmin;
   const isWrongAddress = !!user && !user.isAdmin;
@@ -939,7 +942,7 @@ export default function AdminDashboard() {
 
         {/* Tab navigation */}
         <div className="flex items-center gap-0 mb-8 border-b border-white/[0.06]">
-          {(["overview", "history", "addresses"] as const).map((t) => (
+          {(["overview", "history", "addresses", "ads", "orders", "rates"] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -953,10 +956,22 @@ export default function AdminDashboard() {
                 <BarChart3 size={14} />
               ) : t === "history" ? (
                 <History size={14} />
+              ) : t === "ads" ? (
+                <Megaphone size={14} />
+              ) : t === "orders" ? (
+                <Inbox size={14} />
+              ) : t === "rates" ? (
+                <TrendingUp size={14} />
               ) : (
                 <MapPin size={14} />
               )}
-              {t === "addresses" ? "Addresses" : t.charAt(0).toUpperCase() + t.slice(1)}
+              {t === "addresses"
+                ? "Addresses"
+                : t === "ads"
+                ? "Ad book"
+                : t === "rates"
+                ? "Market"
+                : t.charAt(0).toUpperCase() + t.slice(1)}
             </button>
           ))}
         </div>
@@ -1074,6 +1089,12 @@ export default function AdminDashboard() {
         {tab === "addresses" && (
           <DepositAddressManager />
         )}
+
+        {tab === "ads" && <AdBookManager />}
+
+        {tab === "orders" && <BitgetOrders />}
+
+        {tab === "rates" && <MarketRates />}
       </main>
     </div>
   );

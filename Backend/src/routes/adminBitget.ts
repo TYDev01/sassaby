@@ -16,6 +16,11 @@ import {
   isConfigured,
   checkStatus,
   fetchAdList,
+  fetchMyAds,
+  fetchPendingOrders,
+  fetchAllOrders,
+  OrderStatusFilter,
+  fetchKnownPayMethodIds,
   createAd,
   updateAd,
   PayMethodRef,
@@ -115,13 +120,81 @@ router.get("/market", async (req: Request, res: Response) => {
   }
 });
 
-// ─── GET /ads — the desk's own ads ────────────────────────────────────────────
-// Read from the local mirror: the UTA P2P API publishes a public book but no
-// confirmed "my ads" endpoint.
+// ─── GET /ads — the desk's own ads, live from Bitget ──────────────────────────
+// Falls back to the local mirror if Bitget is unreachable, so the page still
+// renders something rather than going blank.
 
 router.get("/ads", async (_req: Request, res: Response) => {
-  const ads = await prisma.deskAd.findMany({ orderBy: { updatedAt: "desc" } });
-  return res.json({ ads, count: ads.length });
+  if (isConfigured()) {
+    try {
+      const ads = await fetchMyAds();
+      return res.json({ ads, count: ads.length, source: "bitget" });
+    } catch (err) {
+      console.warn("[BITGET] my-ads failed, serving mirror:", (err as Error).message);
+    }
+  }
+  const mirrored = await prisma.deskAd.findMany({ orderBy: { updatedAt: "desc" } });
+  return res.json({
+    ads: mirrored.map((a) => ({ ...a, live: a.active, status: a.active ? "mirror" : "inactive" })),
+    count: mirrored.length,
+    source: "mirror",
+  });
+});
+
+// ─── GET /orders — incoming P2P orders ────────────────────────────────────────
+
+const VALID_ORDER_STATUSES = [
+  "pending_payment",
+  "pending_release",
+  "completed",
+  "cancelled",
+  "in_appeal",
+] as const;
+
+router.get("/orders", async (req: Request, res: Response) => {
+  if (!requireConfigured(res)) return;
+
+  const { side, cursor, status, limit } = req.query as Record<string, string>;
+  if (side && !VALID_SIDES.includes(side as Side)) {
+    return res.status(400).json({ error: `side must be one of: ${VALID_SIDES.join(", ")}.` });
+  }
+  if (status && status !== "pending" && !VALID_ORDER_STATUSES.includes(status as OrderStatusFilter)) {
+    return res.status(400).json({
+      error: `status must be "pending" or one of: ${VALID_ORDER_STATUSES.join(", ")}.`,
+    });
+  }
+
+  try {
+    // "pending" is the live action queue and has its own endpoint, which bundles
+    // pending_payment, pending_release and in_appeal. Everything else — including
+    // history — comes from all-orders.
+    const args = {
+      side: side as Side | undefined,
+      cursor: cursor || undefined,
+      limit: limit ? Number(limit) : undefined,
+    };
+    const { orders, nextId } =
+      status === "pending" || !status
+        ? await fetchPendingOrders(args)
+        : await fetchAllOrders({ ...args, status: status as OrderStatusFilter });
+
+    return res.json({ orders, count: orders.length, nextId });
+  } catch (err) {
+    return fail(res, err);
+  }
+});
+
+// ─── GET /pay-methods — IDs this desk has used before ─────────────────────────
+// Bitget exposes no payment-method listing endpoint (all candidates 404), so the
+// desk's own ad history is the catalogue.
+
+router.get("/pay-methods", async (_req: Request, res: Response) => {
+  if (!requireConfigured(res)) return;
+  try {
+    return res.json({ payMethodIds: await fetchKnownPayMethodIds() });
+  } catch (err) {
+    return fail(res, err);
+  }
 });
 
 // ─── POST /ads — publish an ad ────────────────────────────────────────────────

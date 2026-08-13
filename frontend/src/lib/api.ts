@@ -444,3 +444,171 @@ export async function updateRateConfig(patch: Partial<RateConfig>): Promise<Rate
   if (!res.ok) throw new Error("Failed to update rate config");
   return res.json();
 }
+
+// ─── Bitget ad book (admin) ───────────────────────────────────────────────────
+
+export interface BitgetStatus {
+  configured: boolean;
+  reachable: boolean;
+  merchant?: {
+    uid: string;
+    nickName: string;
+    accountLevel: string;
+    completedOrderNum: string;
+    positiveRate: string;
+  };
+  error?: string;
+  endpoints?: Record<string, string>;
+}
+
+export interface DeskAd {
+  advId: string;
+  token: string;
+  fiat: string;
+  side: "buy" | "sell";
+  price: number;
+  priceType: string;
+  /** Bitget's status, e.g. "online", "delist", "remove". */
+  status: string;
+  /** True when the ad is actually on the book. Only live ads price quotes. */
+  live: boolean;
+  quantity: number;
+  soldAmount: number;
+  payMethodIds: string[];
+  updatedTime: number;
+}
+
+export interface BitgetOrder {
+  orderId: string;
+  side: string;
+  token: string;
+  fiat: string;
+  price: number;
+  amount: number;
+  quantity: number;
+  fee: number;
+  counterparty: string;
+  /** "pending_payment" | "pending_release" | "in_appeal" */
+  status: string;
+  createdTime: number;
+  updatedTime: number;
+}
+
+export interface MarketAd {
+  advId: string;
+  token: string;
+  fiat: string;
+  side: string;
+  price: number;
+  quantity: number;
+  minAmount: number;
+  maxAmount: number;
+  merchantName: string;
+  merchantId: string;
+  completedOrderNum?: number;
+}
+
+export interface PublishAdPayload {
+  token: string;
+  fiat: string;
+  side: "buy" | "sell";
+  priceType: "fixed" | "floating";
+  price?: number;
+  premium?: number;
+  quantity: number;
+  minAmount: number;
+  maxAmount: number;
+  payMethodIds: Array<{ payMethodId: string; userPayMethodId?: string }>;
+  payTimeLimit: string;
+  remark?: string;
+}
+
+/** Admin proxies authorise the caller before attaching the privileged key. */
+async function adminRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const res = await fetch(`${NEXTJS_ORIGIN}${path}`, {
+    cache: "no-store",
+    ...init,
+    headers: {
+      ...(init.body ? { "Content-Type": "application/json" } : {}),
+      ...adminAuthHeaders(),
+      ...init.headers,
+    },
+  });
+  const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!res.ok) {
+    throw new ApiError((body.error as string) ?? `Request failed (${res.status})`, res.status, body);
+  }
+  return body as T;
+}
+
+export async function fetchBitgetStatus(): Promise<BitgetStatus> {
+  return adminRequest<BitgetStatus>("/api/admin/bitget/status");
+}
+
+export async function fetchDeskAds(): Promise<DeskAd[]> {
+  const d = await adminRequest<{ ads: DeskAd[] }>("/api/admin/bitget/ads");
+  return d.ads;
+}
+
+export async function fetchMarketBook(params: {
+  token: string;
+  fiat: string;
+  side: "buy" | "sell";
+}): Promise<MarketAd[]> {
+  const qs = new URLSearchParams(params as unknown as Record<string, string>);
+  const d = await adminRequest<{ ads: MarketAd[] }>(`/api/admin/bitget/market?${qs}`);
+  return d.ads;
+}
+
+export async function publishAd(payload: PublishAdPayload): Promise<{ advId?: string }> {
+  return adminRequest<{ advId?: string }>("/api/admin/bitget/ads", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function repriceAd(
+  advId: string,
+  patch: { price?: number; quantity?: number; minAmount?: number; maxAmount?: number; payTimeLimit?: string }
+): Promise<unknown> {
+  return adminRequest(`/api/admin/bitget/ads/${encodeURIComponent(advId)}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+}
+
+export async function setAdActive(advId: string, active: boolean): Promise<unknown> {
+  return adminRequest(`/api/admin/bitget/ads/${encodeURIComponent(advId)}/active`, {
+    method: "POST",
+    body: JSON.stringify({ active }),
+  });
+}
+
+export type BitgetOrderFilter =
+  | "pending"
+  | "completed"
+  | "cancelled"
+  | "in_appeal";
+
+export async function fetchBitgetOrders(params: {
+  status?: BitgetOrderFilter;
+  side?: "buy" | "sell";
+  cursor?: string;
+  limit?: number;
+} = {}): Promise<{ orders: BitgetOrder[]; nextId: string }> {
+  const qs = new URLSearchParams();
+  if (params.status) qs.set("status", params.status);
+  if (params.side) qs.set("side", params.side);
+  if (params.cursor) qs.set("cursor", params.cursor);
+  if (params.limit) qs.set("limit", String(params.limit));
+  const suffix = qs.toString() ? `?${qs}` : "";
+  return adminRequest<{ orders: BitgetOrder[]; nextId: string }>(
+    `/api/admin/bitget/orders${suffix}`
+  );
+}
+
+/** Payment method IDs derived from the desk's own ad history. */
+export async function fetchPayMethodIds(): Promise<string[]> {
+  const d = await adminRequest<{ payMethodIds: string[] }>("/api/admin/bitget/pay-methods");
+  return d.payMethodIds;
+}
