@@ -22,7 +22,6 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
-import { useWallet } from "@/lib/wallet";
 import { fetchOrders, Order } from "@/lib/api";
 import { STATUS_LABEL, STATUS_STYLE, explorerTxUrl } from "@/lib/orderStatus";
 import { useAuth } from "@/lib/auth";

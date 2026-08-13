@@ -11,14 +11,14 @@ interface TickerItem {
 }
 
 const PAIRS: { token: string; currency: string; type: "BUY" | "SELL" }[] = [
-  { token: "STX",   currency: "NGN", type: "BUY"  },
-  { token: "STX",   currency: "NGN", type: "SELL" },
-  { token: "USDCx", currency: "NGN", type: "BUY"  },
-  { token: "STX",   currency: "GHS", type: "BUY"  },
-  { token: "STX",   currency: "KES", type: "BUY"  },
-  { token: "STX",   currency: "KES", type: "SELL" },
-  { token: "BTC",   currency: "NGN", type: "BUY"  },
-  { token: "USDCx", currency: "GHS", type: "BUY"  },
+  { token: "USDT", currency: "NGN", type: "BUY"  },
+  { token: "USDT", currency: "NGN", type: "SELL" },
+  { token: "BTC",  currency: "NGN", type: "BUY"  },
+  { token: "BTC",  currency: "NGN", type: "SELL" },
+  { token: "USDT", currency: "GHS", type: "BUY"  },
+  { token: "USDT", currency: "KES", type: "BUY"  },
+  { token: "USDT", currency: "KES", type: "SELL" },
+  { token: "BTC",  currency: "GHS", type: "BUY"  },
 ];
 
 const FLAG: Record<string, string> = {

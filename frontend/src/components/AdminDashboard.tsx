@@ -182,9 +182,9 @@ function RecentTransfersTable({ transfers }: { transfers: Order[] }) {
 // ─── Volume by Token Bar Chart ────────────────────────────────────────────────
 
 const TOKEN_COLORS: Record<string, string> = {
-  STX: "#f97316",
-  USDCx: "#6366f1",
   BTC: "#eab308",
+  USDT: "#22c55e",
+  ETH: "#6366f1",
 };
 
 function VolumeByTokenChart({ data }: { data: AdminStats["volumeByToken"] }) {
@@ -568,8 +568,6 @@ function DashboardSkeleton() {
 
 /** Per-asset icon where we have one; falls back to a lettered chip. */
 const TOKEN_ICONS: Record<string, string> = {
-  STX: "/stx.png",
-  USDCx: "/usdcx.png",
   BTC: "/btc.png",
 };
 

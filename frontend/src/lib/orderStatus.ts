@@ -74,7 +74,6 @@ export function clientHint(status: OrderStatus, direction: OrderDirection): stri
 export function explorerTxUrl(chain: string, txId: string): string | null {
   if (!txId) return null;
   switch (chain) {
-    case "stacks":   return `https://explorer.hiro.so/txid/${txId}?chain=mainnet`;
     case "bitcoin":  return `https://blockstream.info/tx/${txId}`;
     case "litecoin": return `https://blockchair.com/litecoin/transaction/${txId}`;
     case "ethereum": return `https://etherscan.io/tx/${txId}`;

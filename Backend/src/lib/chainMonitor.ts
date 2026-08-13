@@ -4,8 +4,6 @@ import { notifyDepositConfirmed } from "./notify";
 
 // ─── Configuration ────────────────────────────────────────────────────────────
 
-const STACKS_API =
-  (process.env.STACKS_API_URL ?? "https://api.mainnet.hiro.so").replace(/\/$/, "");
 const BTC_API = "https://blockstream.info/api";
 
 /** How often to poll (ms). */
@@ -14,38 +12,8 @@ const POLL_INTERVAL_MS = 20_000;
 // Order expiry lives in lib/expirySweep.ts — it must cover fiat-side orders that
 // this monitor never looks at.
 
-const USDC_CONTRACT_PREFIX = (
-  process.env.STACKS_USDC_CONTRACT ??
-  "SP120SBRBQJ00MCWS7TM5R8WJNTTKD5K0HFRC2CNE.usdcx"
-).toLowerCase();
-
 // Smallest unit multipliers
-const STX_MICRO  = 1_000_000;
-const USDC_MICRO = 1_000_000;
 const BTC_SATS   = 100_000_000;
-
-// ─── Stacks types ─────────────────────────────────────────────────────────────
-
-interface StacksBaseTransfer {
-  amount: string;
-  sender: string;
-  recipient: string;
-}
-interface StacksFtTransfer extends StacksBaseTransfer {
-  asset_identifier: string;
-}
-interface StacksTxEntry {
-  tx: {
-    tx_id: string;
-    tx_status: string;
-    block_time_iso: string;
-  };
-  stx_transfers: StacksBaseTransfer[];
-  ft_transfers:  StacksFtTransfer[];
-}
-interface StacksTxWithTransfersResponse {
-  results: StacksTxEntry[];
-}
 
 // ─── BTC types (Blockstream) ──────────────────────────────────────────────────
 
@@ -63,68 +31,6 @@ interface CheckResult {
   txId?: string;
 }
 
-// ─── Stacks deposit check ────────────────────────────────────────────────────
-// Uses BOTH the sender address AND the amount + time to identify the correct tx.
-// Already-claimed txIds are excluded to prevent double-payouts.
-
-async function checkStacksDeposit(opts: {
-  depositAddress: string;
-  senderAddress:  string;       // user's wallet address (may be empty)
-  sendAmount:     number;
-  token:          "STX" | "USDCx";
-  afterIso:       string;
-  claimedTxIds:   Set<string>;  // txIds already matched to other transfers
-}): Promise<CheckResult> {
-  const { depositAddress, senderAddress, sendAmount, token, afterIso, claimedTxIds } = opts;
-
-  const url =
-    `${STACKS_API}/extended/v1/address/${encodeURIComponent(depositAddress)}` +
-    `/transactions_with_transfers?limit=50`;
-
-  const { data } = await axios.get<StacksTxWithTransfersResponse>(url, {
-    timeout: 15_000,
-  });
-
-  // Look back 2 hours before createdAt so we catch txns sent before the
-  // transfer record was created (common when user sends first, then fills form).
-  const afterMs       = new Date(afterIso).getTime() - 2 * 60 * 60 * 1_000;
-  const micro         = token === "STX" ? STX_MICRO : USDC_MICRO;
-  const requiredMicro = BigInt(Math.floor(sendAmount * micro));
-  const senderLc      = senderAddress.toLowerCase();
-
-  for (const entry of data.results ?? []) {
-    if (entry.tx.tx_status !== "success") continue;
-    if (claimedTxIds.has(entry.tx.tx_id)) continue;  // already matched to another transfer
-
-    const txTime = new Date(entry.tx.block_time_iso).getTime();
-    if (txTime < afterMs) continue;  // tx predates this transfer record
-
-    if (token === "STX") {
-      for (const t of entry.stx_transfers) {
-        if (t.recipient.toLowerCase() !== depositAddress.toLowerCase()) continue;
-        if (BigInt(t.amount) < requiredMicro) continue;
-        // If the user provided their Stacks address, require the on-chain sender
-        // to match.  This prevents a deposit from a different wallet being
-        // claimed for this transfer (cross-user theft via amount collision).
-        if (senderLc && t.sender.toLowerCase() !== senderLc) continue;
-        return { confirmed: true, txId: entry.tx.tx_id };
-      }
-    } else {
-      for (const t of entry.ft_transfers) {
-        if (!t.asset_identifier.toLowerCase().startsWith(USDC_CONTRACT_PREFIX)) continue;
-        if (t.recipient.toLowerCase() !== depositAddress.toLowerCase()) continue;
-        if (BigInt(t.amount) < requiredMicro) continue;
-        // Require on-chain sender to match when the address was captured at
-        // transfer-creation time.
-        if (senderLc && t.sender.toLowerCase() !== senderLc) continue;
-        return { confirmed: true, txId: entry.tx.tx_id };
-      }
-    }
-  }
-
-  return { confirmed: false };
-}
-
 // ─── Bitcoin deposit check ────────────────────────────────────────────────────
 // Checks recipient output, amount, confirmation status, block time, and txId
 // deduplication.  BTC UTXO inputs don't always expose a clean sender address,
@@ -139,7 +45,7 @@ async function checkBtcDeposit(opts: {
   const { depositAddress, sendAmount, afterIso, claimedTxIds } = opts;
 
   const requiredSats = Math.floor(sendAmount * BTC_SATS);
-  // Look back 2 hours before createdAt (same reason as STX check above).
+  // Look back 2 hours before createdAt (same reason as the Stacks check above).
   const afterMs      = new Date(afterIso).getTime() - 2 * 60 * 60 * 1_000;
 
   const { data: txs } = await axios.get<BlockstreamTx[]>(
@@ -186,16 +92,7 @@ async function checkTransfer(
 
   let result: CheckResult;
   try {
-    if (sendToken === "STX" || sendToken === "USDCx") {
-      result = await checkStacksDeposit({
-        depositAddress,
-        senderAddress,
-        sendAmount,
-        token: sendToken,
-        afterIso: createdAt,
-        claimedTxIds,
-      });
-    } else if (sendToken === "BTC") {
+    if (sendToken === "BTC") {
       result = await checkBtcDeposit({
         depositAddress,
         sendAmount,

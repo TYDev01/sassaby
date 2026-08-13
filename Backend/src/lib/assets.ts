@@ -12,7 +12,6 @@
  */
 
 export const CHAINS = [
-  "stacks",
   "bitcoin",
   "litecoin",
   "ethereum",
@@ -39,8 +38,6 @@ export interface AssetSpec {
 
 export const ASSETS: AssetSpec[] = [
   // ── Already monitored on-chain ──
-  { token: "STX",   chain: "stacks",   network: "Stacks",            decimals: 6,  monitored: true },
-  { token: "USDCx", chain: "stacks",   network: "Stacks",            decimals: 6,  monitored: true },
   { token: "BTC",   chain: "bitcoin",  network: "Bitcoin",           decimals: 8,  monitored: true },
 
   // ── Pending adapters — deposits must route through Bitget until built ──

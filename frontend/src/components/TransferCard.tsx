@@ -36,10 +36,8 @@ interface TransferCardProps {
   readOnly?: boolean;
 }
 
-/** Icons exist only for the original three; everything else gets a chip. */
+/** An icon exists only for BTC; everything else gets a lettered chip. */
 const TOKEN_IMAGES: Record<string, string> = {
-  STX: "/stx.png",
-  USDCx: "/usdcx.png",
   BTC: "/btc.png",
 };
 

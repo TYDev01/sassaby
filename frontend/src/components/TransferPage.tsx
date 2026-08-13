@@ -28,11 +28,11 @@ import { toast } from "sonner";
 type Currency = "NGN" | "GHS" | "KES";
 
 /** Fallback until the registry loads, so the first paint isn't empty. */
-const DEFAULT_ASSET: SelectedAsset = { token: "STX", chain: "stacks" };
+const DEFAULT_ASSET: SelectedAsset = { token: "BTC", chain: "bitcoin" };
 
 // ─── Hero Heading ─────────────────────────────────────────────────────────────
 
-const CRYPTO_WORDS = ["STX", "USDT", "SOL", "BTC"];
+const CRYPTO_WORDS = ["BTC", "USDT", "SOL", "ETH"];
 const FIAT_WORDS = ["NGN", "GHS", "KES"];
 
 function CyclingWord({ words, delay = 0 }: { words: string[]; delay?: number }) {

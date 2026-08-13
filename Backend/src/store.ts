@@ -126,7 +126,7 @@ function mapRow(row: any): Order {
     direction:          row.direction as OrderDirection,
     sendAmount:         Number(row.sendAmount),
     sendToken:          row.sendToken,
-    chain:              row.chain ?? "stacks",
+    chain:              row.chain ?? "bitcoin",
     usdEquivalent:      Number(row.usdEquivalent),
     receiveAmount:      Number(row.receiveAmount),
     receiveCurrency:    row.receiveCurrency as Currency,

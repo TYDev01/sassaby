@@ -4,7 +4,7 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* Stacks Bridge custom theme variables */
+/* Sassaby custom theme variables */
 :root {
   --stx-orange: #f97316;
   --stx-orange-glow: rgba(249, 115, 22, 0.3);
