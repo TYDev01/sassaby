@@ -1,21 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown } from "lucide-react";
-import Image from "next/image";
+import { useCallback } from "react";
+import { motion } from "framer-motion";
 
 import type { AssetSpec } from "@/lib/api";
+import AssetPicker, { SelectedAsset } from "@/components/AssetPicker";
 
-/**
- * An asset is a (token, chain) pair, never a bare symbol — USDT on Tron and
- * USDT on Ethereum are different assets with different addresses and fees, and
- * conflating them is how a deposit goes to the wrong network.
- */
-export interface SelectedAsset {
-  token: string;
-  chain: string;
-}
+export type { SelectedAsset };
 
 interface TransferCardProps {
   /** Heading — "You'll send" when selling, "You'll receive" when buying. */
@@ -34,146 +25,6 @@ interface TransferCardProps {
   onAssetChange: (asset: SelectedAsset) => void;
   /** Read-only mode (the computed side of a quote) */
   readOnly?: boolean;
-}
-
-/** An icon exists only for BTC; everything else gets a lettered chip. */
-const TOKEN_IMAGES: Record<string, string> = {
-  BTC: "/btc.png",
-};
-
-function assetKey(a: SelectedAsset): string {
-  return `${a.token}:${a.chain}`;
-}
-
-// ─── Token Icon ────────────────────────────────────────────────────────────────
-
-function TokenIcon({ token, size = 20 }: { token: string; size?: number }) {
-  const src = TOKEN_IMAGES[token];
-  if (src) {
-    return (
-      <Image
-        src={src}
-        alt={token}
-        width={size}
-        height={size}
-        className="rounded-full shrink-0 object-cover"
-      />
-    );
-  }
-  return (
-    <span
-      style={{ width: size, height: size, fontSize: Math.max(8, size * 0.4) }}
-      className="rounded-full shrink-0 bg-white/[0.08] border border-white/10 flex items-center justify-center font-bold text-gray-300"
-    >
-      {token.slice(0, 3)}
-    </span>
-  );
-}
-
-// ─── Asset Dropdown ───────────────────────────────────────────────────────────
-
-function AssetDropdown({
-  assets,
-  selected,
-  onSelect,
-}: {
-  assets: AssetSpec[];
-  selected: SelectedAsset;
-  onSelect: (a: SelectedAsset) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  const selectedKey = assetKey(selected);
-
-  return (
-    <div ref={ref} className="relative">
-      <motion.button
-        whileTap={{ scale: 0.96 }}
-        onClick={() => setOpen((prev) => !prev)}
-        aria-label="Select asset and network"
-        aria-expanded={open}
-        className="
-          flex items-center gap-2 bg-[#1a1a1a] border border-white/10
-          rounded-full px-4 py-2 focus:outline-none
-          hover:border-white/20 transition-colors duration-200 cursor-pointer
-        "
-      >
-        <TokenIcon token={selected.token} size={20} />
-        <span className="text-white text-base font-semibold tracking-wide">
-          {selected.token}
-        </span>
-        <ChevronDown
-          size={14}
-          className={`text-gray-400 transition-transform duration-200 ${
-            open ? "rotate-180" : ""
-          }`}
-        />
-      </motion.button>
-
-      <AnimatePresence>
-        {open && (
-          <motion.ul
-            role="listbox"
-            aria-label="Asset options"
-            initial={{ opacity: 0, y: 6, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 6, scale: 0.97 }}
-            transition={{ duration: 0.18 }}
-            className="
-              absolute right-0 top-full mt-2 z-50
-              bg-[#1a1a1a] border border-white/10 rounded-xl
-              py-1 min-w-[230px] max-h-[320px] overflow-y-auto shadow-xl
-            "
-          >
-            {assets.map((a) => {
-              const key = `${a.token}:${a.chain}`;
-              const isSelected = key === selectedKey;
-              return (
-                <li key={key}>
-                  <button
-                    role="option"
-                    aria-selected={isSelected}
-                    onClick={() => {
-                      onSelect({ token: a.token, chain: a.chain });
-                      setOpen(false);
-                    }}
-                    className={`
-                      w-full flex items-center gap-2.5 px-4 py-2.5 text-sm
-                      transition-colors duration-150 cursor-pointer text-left
-                      ${
-                        isSelected
-                          ? "text-white bg-white/5"
-                          : "text-gray-400 hover:text-white hover:bg-white/5"
-                      }
-                    `}
-                  >
-                    <TokenIcon token={a.token} size={18} />
-                    <span className="font-medium">{a.token}</span>
-                    {/* The network is the load-bearing half of the choice, so it
-                        is always shown, never hidden behind the symbol. */}
-                    <span className="ml-auto text-[11px] text-gray-500 truncate">
-                      {a.network}
-                    </span>
-                  </button>
-                </li>
-              );
-            })}
-          </motion.ul>
-        )}
-      </AnimatePresence>
-    </div>
-  );
 }
 
 // ─── Amount Input ─────────────────────────────────────────────────────────────
@@ -282,7 +133,7 @@ export default function TransferCard({
         </div>
 
         <div className="pt-5 flex flex-col items-end gap-1.5">
-          <AssetDropdown assets={assets} selected={selected} onSelect={onAssetChange} />
+          <AssetPicker assets={assets} selected={selected} onSelect={onAssetChange} />
           {network && (
             <span className="text-[11px] text-gray-500 pr-1 max-w-[150px] truncate text-right">
               {network}

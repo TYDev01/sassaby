@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import { useEffect, useState, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -41,6 +40,7 @@ import MarketRates from "@/components/MarketRates";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth";
 import AdminChainHistory from "@/components/AdminChainHistory";
+import { TokenIcon } from "@/components/AssetPicker";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -182,9 +182,14 @@ function RecentTransfersTable({ transfers }: { transfers: Order[] }) {
 // ─── Volume by Token Bar Chart ────────────────────────────────────────────────
 
 const TOKEN_COLORS: Record<string, string> = {
-  BTC: "#eab308",
-  USDT: "#22c55e",
-  ETH: "#6366f1",
+  BTC:  "#f7931a",
+  LTC:  "#bfbbbb",
+  ETH:  "#627eea",
+  BNB:  "#f3ba2f",
+  TRX:  "#ef0027",
+  SOL:  "#66f9a1",
+  USDT: "#26a17b",
+  USDC: "#2775ca",
 };
 
 function VolumeByTokenChart({ data }: { data: AdminStats["volumeByToken"] }) {
@@ -566,11 +571,6 @@ function DashboardSkeleton() {
 // different addresses. The asset list comes from the backend registry so this
 // panel never drifts from what the API will actually accept.
 
-/** Per-asset icon where we have one; falls back to a lettered chip. */
-const TOKEN_ICONS: Record<string, string> = {
-  BTC: "/btc.png",
-};
-
 interface AddrDraft {
   address: string;
   label: string;
@@ -694,19 +694,12 @@ function DepositAddressManager() {
             const isDeleting = deleting[key];
             const isSaved = savedFlag[key];
             const hasExisting = !!existing?.address;
-            const icon = TOKEN_ICONS[asset.token];
 
             return (
               <div key={key} className="px-4 sm:px-6 py-5 flex flex-col gap-3">
                 {/* Asset header */}
                 <div className="flex items-center gap-3">
-                  {icon ? (
-                    <Image src={icon} alt={asset.token} width={32} height={32} className="rounded-full" />
-                  ) : (
-                    <div className="w-8 h-8 rounded-full bg-white/[0.06] border border-white/10 flex items-center justify-center text-[11px] font-bold text-gray-300">
-                      {asset.token.slice(0, 3)}
-                    </div>
-                  )}
+                  <TokenIcon token={asset.token} chain={asset.chain} size={32} />
                   <div className="min-w-0">
                     <p className="text-white text-sm font-semibold">{asset.token}</p>
                     <p className="text-gray-500 text-xs truncate">{asset.network}</p>
