@@ -414,6 +414,27 @@ export interface AdminStats {
   volumeByToken: Record<string, number>;
   volumeByCurrency: Record<string, number>;
   recentTransfers: Order[];
+  /**
+   * Bitget P2P, reported alongside the site's own orders rather than added to
+   * them: a customer order and the P2P trade that rebalances it are the same
+   * value moving twice.
+   */
+  p2p?: P2PStats;
+}
+
+export interface P2PStats {
+  /** False when Bitget is unconfigured or unreachable. */
+  available: boolean;
+  error?: string;
+  completedOrders: number;
+  pendingOrders: number;
+  volumeUSD: number;
+  feesUSD: number;
+  volumeByFiat: Record<string, number>;
+  boughtUSD: number;
+  soldUSD: number;
+  /** True when the page cap was hit, so the totals are a floor. */
+  truncated?: boolean;
 }
 
 /** Bearer header for the Next.js admin proxies, which authorise before
