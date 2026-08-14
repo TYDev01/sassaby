@@ -171,3 +171,33 @@
 .animate-ticker:hover {
   animation-play-state: paused;
 }
+/* ── Slim scrollbar ──────────────────────────────────────────────────────────
+   The default chrome scrollbar is a light slab against these dark panels, and
+   it sits inside modals whose whole point is a calm list. Firefox gets the
+   standard properties; WebKit/Blink need the vendor pseudo-elements. */
+
+.scrollbar-slim {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+}
+
+.scrollbar-slim::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.scrollbar-slim::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-slim::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  /* Inset the thumb so it reads as a hairline, not a bar glued to the edge. */
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+.scrollbar-slim::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.26);
+}

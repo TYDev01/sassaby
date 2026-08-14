@@ -32,8 +32,8 @@ const DEFAULT_ASSET: SelectedAsset = { token: "BTC", chain: "bitcoin" };
 
 // ─── Hero Heading ─────────────────────────────────────────────────────────────
 
-const CRYPTO_WORDS = ["BTC", "USDT", "SOL", "ETH"];
-const FIAT_WORDS = ["NGN", "GHS", "KES"];
+const CRYPTO_WORDS = ["BTC", "USDT", "SOL", "ETH", "LTC", "BNB", "TRX", "TON"];
+const FIAT_WORDS = ["NGN"];
 
 function CyclingWord({ words, delay = 0 }: { words: string[]; delay?: number }) {
   const [index, setIndex] = useState(0);
@@ -169,8 +169,7 @@ function QuickTransferBanner() {
       <Zap size={12} className="text-[#f97316] shrink-0" />
       <p className="text-sm text-gray-400 text-center">
         Quick transfers up to{" "}
-        <span className="text-[#f97316] font-medium">$10,000</span> — verified by hand,
-        usually within minutes.
+        <span className="text-[#f97316] font-medium">$100,000</span> — verified within minutes.
       </p>
     </motion.div>
   );
@@ -259,7 +258,9 @@ export default function TransferPage() {
   // ── Form state ──────────────────────────────────────────────────────────────
   const [direction, setDirection] = useState<OrderDirection>("sell");
   const [sendAmount, setSendAmount] = useState("");
-  const [currency, setCurrency] = useState<Currency>("NGN");
+  // NGN only for now — the ReceiveCard shows it as a fixed badge rather than a
+  // picker, so nothing sets this.
+  const [currency] = useState<Currency>("NGN");
   const [selectedBank, setSelectedBank] = useState<Bank | null>(null);
   const [accountNumber, setAccountNumber] = useState("");
   const [destinationAddress, setDestinationAddress] = useState("");
@@ -490,7 +491,6 @@ export default function TransferPage() {
                     amount={receiveAmount}
                     minimum={baseRate}
                     currency={currency}
-                    onCurrencyChange={(c) => setCurrency(c as Currency)}
                     isLoading={ratesLoading}
                     rateInfo={rateInfo}
                   />

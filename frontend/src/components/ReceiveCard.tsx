@@ -1,8 +1,6 @@
 "use client";
 
-import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown } from "lucide-react";
-import { useState, useRef, useEffect } from "react";
+import { motion } from "framer-motion";
 import Image from "next/image";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -14,10 +12,8 @@ interface ReceiveCardProps {
   amount: number;
   /** Minimum receivable amount — null while the live rate is loading */
   minimum: number | null;
-  /** Selected currency */
+  /** Payout currency. Only NGN is offered today — see CURRENCY_IMAGES. */
   currency: Currency;
-  /** Notifies parent when currency changes */
-  onCurrencyChange: (currency: Currency) => void;
   /** Shows a loading skeleton while rates are being fetched */
   isLoading?: boolean;
   /** Live rate info to display below the amount */
@@ -29,8 +25,6 @@ const CURRENCY_IMAGES: Record<Currency, string> = {
   GHS: "/ghs.png",
   KES: "/kes.png",
 };
-
-const CURRENCIES: Currency[] = ["NGN", "GHS", "KES"];
 
 // ─── Currency Icon ────────────────────────────────────────────────────────────
 
@@ -46,98 +40,26 @@ function CurrencyIcon({ currency, size = 20 }: { currency: Currency; size?: numb
   );
 }
 
-// ─── Currency Dropdown ────────────────────────────────────────────────────────
+// ─── Currency Badge ───────────────────────────────────────────────────────────
 
-function CurrencyDropdown({
-  selected,
-  onSelect,
-}: {
-  selected: Currency;
-  onSelect: (c: Currency) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  // Close on outside click
-  useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
+/**
+ * Not a picker: the desk quotes NGN only for now. GHS and KES stay in the type
+ * and in the rate config, so restoring the choice here is a UI change rather
+ * than a rebuild — but offering a currency the desk will not settle is worse
+ * than offering one.
+ */
+function CurrencyBadge({ currency }: { currency: Currency }) {
   return (
-    <div ref={ref} className="relative">
-      {/* Trigger button */}
-      <motion.button
-        whileTap={{ scale: 0.96 }}
-        onClick={() => setOpen((prev) => !prev)}
-        aria-label="Select currency"
-        aria-expanded={open}
-        className="
-          flex items-center gap-2 bg-[#1a1a1a] border border-white/10
-          rounded-full px-4 py-2 focus:outline-none
-          hover:border-white/20 transition-colors duration-200 cursor-pointer
-        "
-      >
-        <CurrencyIcon currency={selected} size={20} />
-        <span className="text-white text-base font-semibold tracking-wide">
-          {selected}
-        </span>
-        <ChevronDown
-          size={14}
-          className={`text-gray-400 transition-transform duration-200 ${
-            open ? "rotate-180" : ""
-          }`}
-        />
-      </motion.button>
-
-      {/* Dropdown panel */}
-      <AnimatePresence>
-        {open && (
-          <motion.ul
-            role="listbox"
-            aria-label="Currency options"
-            initial={{ opacity: 0, y: 6, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 6, scale: 0.97 }}
-            transition={{ duration: 0.18 }}
-            className="
-              absolute right-0 top-full mt-2 z-50
-              bg-[#1a1a1a] border border-white/10 rounded-xl
-              py-1 min-w-[110px] shadow-xl
-            "
-          >
-            {CURRENCIES.map((c) => (
-              <li key={c}>
-                <button
-                  role="option"
-                  aria-selected={c === selected}
-                  onClick={() => {
-                    onSelect(c);
-                    setOpen(false);
-                  }}
-                  className={`
-                    w-full flex items-center gap-2 px-4 py-2.5 text-sm
-                    transition-colors duration-150 cursor-pointer
-                    ${
-                      c === selected
-                        ? "text-white bg-white/5"
-                        : "text-gray-400 hover:text-white hover:bg-white/5"
-                    }
-                  `}
-                >
-                  <CurrencyIcon currency={c} size={18} />
-                  {c}
-                </button>
-              </li>
-            ))}
-          </motion.ul>
-        )}
-      </AnimatePresence>
+    <div
+      className="
+        flex items-center gap-2 bg-[#1a1a1a] border border-white/10
+        rounded-full px-4 py-2
+      "
+    >
+      <CurrencyIcon currency={currency} size={20} />
+      <span className="text-white text-base font-semibold tracking-wide">
+        {currency}
+      </span>
     </div>
   );
 }
@@ -215,7 +137,6 @@ export default function ReceiveCard({
   amount,
   minimum,
   currency,
-  onCurrencyChange,
   isLoading,
   rateInfo,
 }: ReceiveCardProps) {
@@ -246,9 +167,9 @@ export default function ReceiveCard({
           />
         </div>
 
-        {/* Currency selector */}
+        {/* Payout currency */}
         <div className="pt-1">
-          <CurrencyDropdown selected={currency} onSelect={onCurrencyChange} />
+          <CurrencyBadge currency={currency} />
         </div>
       </div>
     </motion.div>
