@@ -539,6 +539,100 @@ function RateManager() {
   );
 }
 
+// ─── Section label ────────────────────────────────────────────────────────────
+
+function SectionLabel({ title, hint }: { title: string; hint: string }) {
+  return (
+    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 -mb-3">
+      <h2 className="text-white text-sm font-semibold">{title}</h2>
+      <p className="text-gray-500 text-xs">{hint}</p>
+    </div>
+  );
+}
+
+// ─── Bitget P2P ───────────────────────────────────────────────────────────────
+
+/**
+ * The desk's own trading, shown beside the customer figures and never added to
+ * them. Selling a customer's USDT on P2P is the same value crossing twice; one
+ * combined total would describe neither book.
+ */
+function P2PSection({ p2p }: { p2p?: AdminStats["p2p"] }) {
+  if (!p2p) return null;
+
+  if (!p2p.available) {
+    return (
+      <>
+        <SectionLabel title="Bitget P2P" hint="The desk rebalancing against customer flow" />
+        <div className="flex items-start gap-2.5 rounded-2xl border border-white/[0.07] bg-[#111111] px-6 py-5 text-sm">
+          <ShieldAlert size={16} className="mt-0.5 shrink-0 text-amber-400" />
+          <div>
+            <p className="text-gray-300 font-medium">P2P figures unavailable</p>
+            <p className="text-gray-500 text-xs mt-0.5">
+              {p2p.error ?? "Bitget could not be reached."} Customer figures above are
+              unaffected.
+            </p>
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  const fiat = Object.entries(p2p.volumeByFiat);
+
+  return (
+    <>
+      <SectionLabel
+        title="Bitget P2P"
+        hint={
+          p2p.truncated
+            ? "Completed trades — showing the most recent 1,000, so totals are a floor"
+            : "All completed trades — the desk rebalancing against customer flow"
+        }
+      />
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard
+          label="P2P Volume"
+          value={fmtUSD(p2p.volumeUSD)}
+          sub={`Bought ${fmtUSD(p2p.boughtUSD)} · sold ${fmtUSD(p2p.soldUSD)}`}
+          icon={<TrendingUp size={18} />}
+          accent="#22c55e"
+        />
+        <StatCard
+          label="P2P Trades"
+          value={`${p2p.completedOrders.toLocaleString()}${p2p.truncated ? "+" : ""}`}
+          sub={`${p2p.pendingOrders} awaiting action`}
+          icon={<Megaphone size={18} />}
+          accent="#6366f1"
+          delay={0.05}
+        />
+        <StatCard
+          label="Fiat Moved"
+          value={
+            fiat.length > 0
+              ? fiat
+                  .map(([c, v]) => `${v.toLocaleString("en-US", { maximumFractionDigits: 0 })} ${c}`)
+                  .join(" · ")
+              : "—"
+          }
+          sub="Across completed P2P orders"
+          icon={<DollarSign size={18} />}
+          accent="#eab308"
+          delay={0.1}
+        />
+        <StatCard
+          label="P2P Fees"
+          value={fmtUSD(p2p.feesUSD)}
+          sub="Charged by Bitget"
+          icon={<ArrowUpRight size={18} />}
+          accent="#ef4444"
+          delay={0.15}
+        />
+      </div>
+    </>
+  );
+}
+
 // ─── Skeleton ─────────────────────────────────────────────────────────────────
 
 function Skeleton({ className }: { className?: string }) {
@@ -988,7 +1082,11 @@ export default function AdminDashboard() {
               <DashboardSkeleton />
         ) : stats ? (
           <div className="flex flex-col gap-8">
-            {/* ── Primary KPI Cards ─────────────────────────────────────────── */}
+            {/* ── Customer orders, from the site ────────────────────────────── */}
+            <SectionLabel
+              title="Customer orders"
+              hint="Placed on the site — the desk's own business"
+            />
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <StatCard
                 label="Total Volume"
@@ -1058,6 +1156,9 @@ export default function AdminDashboard() {
                 delay={0.35}
               />
             </div>
+
+            {/* ── Bitget P2P, kept separate on purpose ──────────────────────── */}
+            <P2PSection p2p={stats.p2p} />
 
             {/* ── Charts Row ────────────────────────────────────────────────── */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
