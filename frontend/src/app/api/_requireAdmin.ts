@@ -54,8 +54,28 @@ export async function requireAdmin(req: NextRequest): Promise<AdminCheck> {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!res.ok) {
+      // Only a real 401 means the session is dead. Reporting anything else as
+      // 401 makes the client discard a perfectly good token: a 429 here once
+      // signed operators out mid-session and left them unable to sign back in,
+      // because the login endpoint shared the exhausted budget.
+      if (res.status === 401) {
+        return {
+          response: NextResponse.json({ error: "Unauthorized." }, { status: 401 }),
+        };
+      }
+      if (res.status === 429) {
+        return {
+          response: NextResponse.json(
+            { error: "Rate limited while verifying your session. Retrying shortly." },
+            { status: 429 }
+          ),
+        };
+      }
       return {
-        response: NextResponse.json({ error: "Unauthorized." }, { status: 401 }),
+        response: NextResponse.json(
+          { error: "Could not verify session." },
+          { status: 503 }
+        ),
       };
     }
     user = ((await res.json()) as { user?: { email?: string; isAdmin?: boolean } }).user;

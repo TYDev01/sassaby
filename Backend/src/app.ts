@@ -72,6 +72,28 @@ const authLimiter = rateLimit({
   message: { error: "Too many authentication attempts. Please try again later." },
 });
 
+/**
+ * GET /api/auth/me is a session read, not a credential attempt, and it must not
+ * share the login budget.
+ *
+ * Every admin proxy route in the frontend verifies the caller by calling it, and
+ * the dashboard polls on a timer — which burned the 20-per-15-minutes login
+ * allowance in about three minutes, turned into a 401 at the proxy, and logged
+ * the operator out. The budget here is generous on purpose: guessing a signed
+ * token is not a rate-limit problem.
+ *
+ * Note this counts per IP, and behind the Next.js proxy every operator shares
+ * the server's IP, so the ceiling covers all of them at once.
+ */
+const sessionLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 300,
+  skip: () => process.env.NODE_ENV === "test",
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many session checks. Please slow down." },
+});
+
 const adminLimiter = rateLimit({
   windowMs: 60_000,
   max: 30,
@@ -86,7 +108,11 @@ app.get("/health", (_req, res) => {
 });
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
-app.use("/api/auth", authLimiter, authRouter);
+// Order matters: the credential endpoints claim the strict limiter first, then
+// everything else under /api/auth falls through to the session limiter.
+app.use("/api/auth/login", authLimiter);
+app.use("/api/auth/register", authLimiter);
+app.use("/api/auth", sessionLimiter, authRouter);
 app.use("/api/orders", transferLimiter, ordersRouter);
 app.use("/api/admin/orders", adminLimiter, adminOrdersRouter);
 app.use("/api/admin/bitget", adminLimiter, adminBitgetRouter);

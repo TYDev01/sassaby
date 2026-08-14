@@ -13,7 +13,21 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
 const BCRYPT_ROUNDS = 12;
-const TOKEN_TTL = "7d";
+
+/**
+ * How long a token stays valid without being renewed — the idle timeout.
+ *
+ * A signed-in client renews on real user activity (see the frontend's
+ * AuthProvider), so an operator who keeps working keeps their session; one who
+ * walks away loses it inside this window. Deliberately short: this is an
+ * operator console for a money desk, and a token in localStorage on an
+ * unattended machine is the thing being defended against.
+ *
+ * Keep SESSION_IDLE_MINUTES in the frontend's lib/auth.tsx in step with this.
+ */
+export const SESSION_TTL_MINUTES = Number(process.env.SESSION_TTL_MINUTES ?? 35);
+/** Seconds, not a "35m" string: jsonwebtoken's types only accept a literal there. */
+const TOKEN_TTL_SECONDS = SESSION_TTL_MINUTES * 60;
 
 export interface TokenPayload {
   userId: string;
@@ -48,7 +62,7 @@ export async function verifyPassword(plain: string, hash: string): Promise<boole
 }
 
 export function signToken(payload: TokenPayload): string {
-  return jwt.sign(payload, secret(), { expiresIn: TOKEN_TTL });
+  return jwt.sign(payload, secret(), { expiresIn: TOKEN_TTL_SECONDS });
 }
 
 export function verifyToken(token: string): TokenPayload | null {

@@ -17,6 +17,7 @@
 const CODES_WITH_LOGOS = new Set([
   "000026", // Taj Bank Limited
   "000027", // Globus Bank
+  "000029", // Lotus Bank
   "011", // First Bank PLC
   "023", // Citi Bank
   "032", // Union Bank PLC
@@ -85,4 +86,61 @@ export function bankColor(name: string): string {
     hash = (hash * 31 + name.charCodeAt(i)) | 0;
   }
   return MONOGRAM_COLORS[Math.abs(hash) % MONOGRAM_COLORS.length];
+}
+
+/**
+ * The banks a payout is actually likely to go to.
+ *
+ * Kept apart from CODES_WITH_LOGOS on purpose. Logo availability is an accident
+ * of what a third-party icon set happens to publish — going by that put CEMCS
+ * Microfinance at the top of the list while Providus, Jaiz, Unity, Suntrust,
+ * Titan and PremiumTrust sat hundreds of rows down. Which banks matter is a
+ * judgement about Nigerian banking, so it is written down as one.
+ *
+ * Codes are Flutterwave's, each checked against a live /api/banks?country=NG
+ * response. A bank listed here with no artwork simply wears its monogram.
+ */
+const COMMON_BANK_CODES = new Set([
+  // Commercial and retail banks
+  "044", // Access Bank
+  "023", // Citi Bank
+  "050", // EcoBank PLC
+  "070", // Fidelity Bank
+  "011", // First Bank PLC
+  "214", // First City Monument Bank
+  "000027", // Globus Bank
+  "058", // Guaranty Trust Bank
+  "301", // Jaiz Bank
+  "082", // Keystone Bank
+  "000029", // Lotus Bank
+  "000036", // Optimus Bank
+  "000030", // Parallex Bank
+  "076", // Polaris bank
+  "000031", // PremiumTrust Bank
+  "101", // ProvidusBank PLC
+  "221", // Stanbic IBTC Bank
+  "068", // Standard Chaterted bank PLC
+  "232", // Sterling Bank PLC
+  "100", // Suntrust Bank
+  "000026", // Taj Bank Limited
+  "000025", // Titan Trust Bank
+  "032", // Union Bank PLC
+  "033", // United Bank for Africa
+  "215", // Unity Bank PLC
+  "035", // Wema Bank PLC
+  "057", // Zenith bank PLC
+  // Neobanks and wallets that carry real payout volume
+  "090267", // Kuda
+  "100004", // Opay
+  "100033", // PALMPAY
+  "090405", // Moniepoint Microfinance Bank
+  "090325", // Sparkle
+  "100026", // Carbon
+  "090110", // VFD Micro Finance Bank
+  "090175", // Rubies Microfinance Bank
+  "090551", // Fairmoney Microfinance Bank Ltd
+]);
+
+export function isCommonBank(code: string): boolean {
+  return COMMON_BANK_CODES.has(code);
 }

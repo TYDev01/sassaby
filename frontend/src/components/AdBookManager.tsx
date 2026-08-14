@@ -32,6 +32,7 @@ import {
   fetchMarketBook,
   publishAd,
   repriceAd,
+  setAdActive,
   fetchPayMethodIds,
   ApiError,
   BitgetStatus,
@@ -497,6 +498,7 @@ function AdRow({ ad, onChanged }: { ad: DeskAd; onChanged: () => void }) {
 
       <div className="flex items-center gap-1.5">
         <input
+          id={`ad-price-${ad.advId}`}
           type="text"
           inputMode="decimal"
           value={price}
@@ -530,6 +532,140 @@ function AdRow({ ad, onChanged }: { ad: DeskAd; onChanged: () => void }) {
           {ad.live ? "Pricing" : "Not pricing"}
         </span>
       </div>
+    </div>
+  );
+}
+
+// ─── Active ads ───────────────────────────────────────────────────────────────
+
+/**
+ * The ads that are actually pricing quotes right now.
+ *
+ * "Your ads" lists everything the desk has ever published, live or not. This is
+ * the short answer to the only question that matters mid-shift: what is the
+ * customer being quoted off, and can I change it without reading a table.
+ */
+function ActiveAdsCard({ ads, onChanged }: { ads: DeskAd[]; onChanged: () => void }) {
+  const [confirming, setConfirming] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const active = ads.filter((a) => a.live && a.active !== false);
+
+  /** Send the operator to the one editor, rather than growing a second one. */
+  function handleEdit(advId: string) {
+    const el = document.getElementById(`ad-price-${advId}`) as HTMLInputElement | null;
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.focus();
+    el.select();
+  }
+
+  async function handleRemove(advId: string) {
+    setBusy(advId);
+    try {
+      await setAdActive(advId, false);
+      toast.success("Ad removed from pricing", {
+        description:
+          "Quotes no longer use it. The ad is still live on Bitget — delist it there to stop trading on it.",
+      });
+      onChanged();
+    } catch (err) {
+      toast.error("Could not remove the ad", {
+        description: err instanceof ApiError ? err.message : "Please try again.",
+      });
+    } finally {
+      setBusy(null);
+      setConfirming(null);
+    }
+  }
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-white/[0.07] bg-[#111] lg:sticky lg:top-4">
+      <div className="flex items-center gap-2 border-b border-white/[0.07] px-4 py-3">
+        <span className="relative flex h-2 w-2">
+          {active.length > 0 && (
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
+          )}
+          <span
+            className={`relative inline-flex h-2 w-2 rounded-full ${
+              active.length > 0 ? "bg-emerald-400" : "bg-gray-600"
+            }`}
+          />
+        </span>
+        <h2 className="text-sm font-semibold text-white">Active ads</h2>
+        <span className="ml-auto text-[11px] font-medium text-gray-500">
+          {active.length} pricing
+        </span>
+      </div>
+
+      {active.length === 0 ? (
+        <p className="px-4 py-6 text-center text-xs leading-relaxed text-gray-500">
+          Nothing is pricing quotes. Publish an ad, or set a manual rate.
+        </p>
+      ) : (
+        <div className="divide-y divide-white/[0.05]">
+          {active.map((ad) => (
+            <div key={ad.advId} className="px-4 py-3">
+              <div className="flex items-baseline gap-2">
+                <p className="text-sm font-semibold text-white">
+                  {ad.token}/{ad.fiat}
+                </p>
+                <span
+                  className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider ${
+                    ad.side === "sell"
+                      ? "bg-emerald-400/10 text-emerald-400"
+                      : "bg-blue-400/10 text-blue-400"
+                  }`}
+                >
+                  {ad.side === "sell" ? "sells" : "buys"}
+                </span>
+                <span className="ml-auto font-mono text-sm text-white">
+                  {ad.price.toLocaleString("en-US")}
+                </span>
+              </div>
+
+              {confirming === ad.advId ? (
+                <div className="mt-2 flex items-center gap-2">
+                  <span className="text-[11px] text-gray-400">Stop pricing off it?</span>
+                  <button
+                    onClick={() => handleRemove(ad.advId)}
+                    disabled={busy === ad.advId}
+                    className="ml-auto cursor-pointer rounded-md bg-red-500/15 px-2 py-1 text-[11px] font-semibold text-red-400 hover:bg-red-500/25 disabled:opacity-50"
+                  >
+                    {busy === ad.advId ? (
+                      <Loader2 size={11} className="animate-spin" />
+                    ) : (
+                      "Yes, remove"
+                    )}
+                  </button>
+                  <button
+                    onClick={() => setConfirming(null)}
+                    className="cursor-pointer rounded-md px-2 py-1 text-[11px] font-medium text-gray-500 hover:text-gray-300"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <div className="mt-2 flex items-center gap-2">
+                  <button
+                    onClick={() => handleEdit(ad.advId)}
+                    className="cursor-pointer rounded-md bg-white/[0.06] px-2.5 py-1 text-[11px] font-medium text-gray-300 hover:bg-white/[0.12] hover:text-white"
+                  >
+                    Edit
+                  </button>
+                  <span className="text-white/10">|</span>
+                  <button
+                    onClick={() => setConfirming(ad.advId)}
+                    className="cursor-pointer rounded-md px-2.5 py-1 text-[11px] font-medium text-gray-500 hover:text-red-400"
+                  >
+                    Remove
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -650,6 +786,7 @@ export default function AdBookManager() {
         </button>
       </div>
 
+      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_17rem]">
       <div className="overflow-hidden rounded-2xl border border-white/[0.07] bg-[#111]">
         <div className="flex items-center gap-2 border-b border-white/[0.07] px-6 py-4">
           <Megaphone size={16} className="text-[#f97316]" />
@@ -675,6 +812,9 @@ export default function AdBookManager() {
             ))}
           </div>
         )}
+      </div>
+
+        <ActiveAdsCard ads={ads} onChanged={load} />
       </div>
 
       <MarketBook />

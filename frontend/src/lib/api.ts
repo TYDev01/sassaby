@@ -187,6 +187,16 @@ export async function fetchMe(): Promise<User> {
   return data.user;
 }
 
+/**
+ * Slide the idle window. Requires a token that is still valid, so this extends a
+ * live session rather than resurrecting a dead one.
+ */
+export async function refreshSession(): Promise<User> {
+  const data = await request<AuthResult>("/api/auth/refresh", { method: "POST" });
+  setToken(data.token);
+  return data.user;
+}
+
 export async function updateProfile(patch: {
   fullName?: string;
   phone?: string;
@@ -472,6 +482,11 @@ export interface DeskAd {
   status: string;
   /** True when the ad is actually on the book. Only live ads price quotes. */
   live: boolean;
+  /**
+   * The desk's own switch, independent of Bitget. False means quotes stop
+   * pricing off this ad even though it is still live on the exchange.
+   */
+  active?: boolean;
   quantity: number;
   soldAmount: number;
   payMethodIds: string[];

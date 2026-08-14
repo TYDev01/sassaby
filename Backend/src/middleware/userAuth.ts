@@ -6,8 +6,9 @@
  *
  * The user is re-read from the database on every request rather than trusted
  * from the token body.  A ban has to take effect immediately — a token issued
- * before the ban is still cryptographically valid for up to seven days, so a
- * claims-only check would leave a banned account trading for a week.
+ * before the ban stays cryptographically valid until its idle window runs out,
+ * and an active session keeps renewing, so a claims-only check would leave a
+ * banned account trading indefinitely.
  */
 
 import { Request, Response, NextFunction } from "express";

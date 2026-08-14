@@ -10,6 +10,7 @@ import {
   normaliseEmail,
   validateEmail,
   validatePassword,
+  SESSION_TTL_MINUTES,
 } from "../lib/auth";
 import { userAuth } from "../middleware/userAuth";
 
@@ -132,6 +133,27 @@ router.post("/login", async (req: Request, res: Response) => {
     success: true,
     token: signToken({ userId: user.id }),
     user: publicUser(user),
+  });
+});
+
+// ─── POST /api/auth/refresh ───────────────────────────────────────────────────
+//
+// Slides the idle window. The client calls this on real user activity, not on
+// its background polling — otherwise an abandoned dashboard would hold a session
+// open indefinitely, which is the thing the short TTL exists to prevent.
+//
+// Renewing requires a token that is still valid, so this extends a live session
+// and cannot resurrect an expired one.
+
+router.post("/refresh", userAuth, async (req: Request, res: Response) => {
+  const user = await prisma.user.findUnique({ where: { id: req.user!.id } });
+  if (!user) return res.status(404).json({ error: "Account not found." });
+
+  return res.json({
+    success: true,
+    token: signToken({ userId: user.id }),
+    user: publicUser(user),
+    expiresInMinutes: SESSION_TTL_MINUTES,
   });
 });
 

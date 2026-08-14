@@ -74,11 +74,26 @@ export async function getBitgetRate(
   if (isConfigured()) {
     try {
       const mine: MyAd[] = await fetchMyAds();
+
+      // Ads the operator has switched off for pricing. Bitget has no concept of
+      // this, so it has to be applied here — otherwise switching an ad off in
+      // the dashboard would change nothing while Bitget was reachable, which is
+      // every normal day.
+      const switchedOff = new Set(
+        (
+          await prisma.deskAd.findMany({
+            where: { active: false },
+            select: { advId: true },
+          })
+        ).map((a) => a.advId)
+      );
+
       const usable = mine.filter(
         (a) =>
           // A delisted ad still comes back from my-ads. Pricing off one would
           // quote a rate the desk is not actually offering.
           a.live &&
+          !switchedOff.has(a.advId) &&
           a.side === side &&
           a.fiat === fiat &&
           USD_REFERENCE_TOKENS.includes(a.token)
