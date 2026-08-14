@@ -14,7 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { fetchBanks, verifyAccount, Bank as ApiBank } from "@/lib/api";
-import { bankLogo, bankInitials, bankColor } from "@/lib/bankLogos";
+import { bankLogo, bankInitials, bankColor, isCommonBank } from "@/lib/bankLogos";
 
 // ─── Re-export Bank type (aligned with Flutterwave) ──────────────────────────
 
@@ -153,19 +153,19 @@ function BankDropdown({
   }, [banks, query]);
 
   /**
-   * With no search, lead with the banks we hold artwork for.
+   * With no search, lead with the banks people actually get paid into.
    *
-   * That set is the commercial banks and the big neobanks — Access, GTB, Kuda,
-   * OPay, Moniepoint — which is what almost every payout goes to. Alphabetical
-   * order buries them under a few hundred microfinance banks whose names happen
-   * to start with A. A search returns to one flat, relevance-free list.
+   * "Common" is the curated list in lib/bankLogos, not "whatever we have a logo
+   * for" — the two are unrelated, and conflating them buried Providus and Jaiz
+   * under a few hundred microfinance banks whose names start with A. A search
+   * returns to one flat, relevance-free list.
    */
   const [common, rest] = useMemo(() => {
     if (query.trim()) return [[] as Bank[], filtered];
-    const withLogo: Bank[] = [];
-    const without: Bank[] = [];
-    for (const b of filtered) (bankLogo(b.code) ? withLogo : without).push(b);
-    return [withLogo, without];
+    const top: Bank[] = [];
+    const others: Bank[] = [];
+    for (const b of filtered) (isCommonBank(b.code) ? top : others).push(b);
+    return [top, others];
   }, [filtered, query]);
 
   const visible = useMemo(() => rest.slice(0, limit), [rest, limit]);

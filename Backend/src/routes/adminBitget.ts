@@ -128,7 +128,21 @@ router.get("/ads", async (_req: Request, res: Response) => {
   if (isConfigured()) {
     try {
       const ads = await fetchMyAds();
-      return res.json({ ads, count: ads.length, source: "bitget" });
+      // Merge the local pricing flag onto the live rows. Bitget knows nothing
+      // about it, so without this the dashboard cannot show — and the operator
+      // cannot clear — an ad the desk has stopped quoting from.
+      const mirror = await prisma.deskAd.findMany({
+        where: { advId: { in: ads.map((a) => a.advId) } },
+        select: { advId: true, active: true },
+      });
+      const inactive = new Set(
+        mirror.filter((m) => !m.active).map((m) => m.advId)
+      );
+      return res.json({
+        ads: ads.map((a) => ({ ...a, active: !inactive.has(a.advId) })),
+        count: ads.length,
+        source: "bitget",
+      });
     } catch (err) {
       console.warn("[BITGET] my-ads failed, serving mirror:", (err as Error).message);
     }
@@ -374,19 +388,49 @@ router.post("/ads/:advId/active", async (req: Request, res: Response) => {
     return res.status(400).json({ error: "active must be true or false." });
   }
 
+  const advId = req.params.advId;
+
   try {
-    const ad = await prisma.deskAd.update({
-      where: { advId: req.params.advId },
-      data: { active },
-    });
+    let ad = await prisma.deskAd.findUnique({ where: { advId } });
+
+    // An ad published from the Bitget app has no mirror row here, and the
+    // operator still has to be able to switch it off. Build the row from the
+    // live ad rather than refusing.
+    if (!ad && isConfigured()) {
+      const live = (await fetchMyAds()).find((a) => a.advId === advId);
+      if (live) {
+        ad = await prisma.deskAd.create({
+          data: {
+            advId,
+            token: live.token,
+            fiat: live.fiat,
+            side: live.side,
+            price: live.price,
+            active,
+          },
+        });
+      }
+    }
+
+    if (!ad) {
+      return res.status(404).json({ error: "No such ad on this desk." });
+    }
+
+    if (ad.active !== active) {
+      ad = await prisma.deskAd.update({ where: { advId }, data: { active } });
+    }
+
     __resetDeskRateCache();
     return res.json({
       success: true,
       ad,
-      note: "Local pricing flag only — the ad is unchanged on Bitget.",
+      note: active
+        ? "This ad prices quotes again."
+        : "Quotes no longer price off this ad. It is still live on Bitget — delist it there to stop trading on it.",
     });
-  } catch {
-    return res.status(404).json({ error: "Ad not found in the local mirror." });
+  } catch (err) {
+    console.error("[BITGET] active toggle failed:", err);
+    return res.status(500).json({ error: "Could not update the ad." });
   }
 });
 
