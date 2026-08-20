@@ -8,12 +8,21 @@ import { Loader2, Mail, Lock, User as UserIcon, Phone, Landmark, Eye, EyeOff } f
 import { toast } from "sonner";
 
 import { useAuth } from "@/lib/auth";
-import { ApiError } from "@/lib/api";
+import { ApiError, isPasswordLinkRequired, SocialProvider } from "@/lib/api";
 import Navbar from "@/components/Navbar";
+import GoogleAuthButton from "@/components/GoogleAuthButton";
+import AppleAuthButton from "@/components/AppleAuthButton";
 
 type Mode = "signin" | "signup";
 
 const MIN_PASSWORD = 10;
+
+/** Inlined at build time by Next, so these are plain booleans at runtime. */
+const HAS_GOOGLE = Boolean(process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID);
+const HAS_APPLE = Boolean(process.env.NEXT_PUBLIC_APPLE_CLIENT_ID);
+const HAS_SOCIAL = HAS_GOOGLE || HAS_APPLE;
+
+const PROVIDER_LABEL: Record<SocialProvider, string> = { google: "Google", apple: "Apple" };
 
 function Field({
   icon: Icon,
@@ -79,7 +88,7 @@ export default function AuthForm({ mode }: { mode: Mode }) {
   const isSignUp = mode === "signup";
   const router = useRouter();
   const params = useSearchParams();
-  const { signIn, signUp } = useAuth();
+  const { signIn, signUp, signInWithProvider } = useAuth();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -88,6 +97,18 @@ export default function AuthForm({ mode }: { mode: Mode }) {
   const [bankAccountName, setBankAccountName] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+
+  /**
+   * Set while a social sign-in is waiting on the existing account's password.
+   * Holds the provider token so the link can complete without a second popup.
+   */
+  const [link, setLink] = useState<{
+    provider: SocialProvider;
+    credential: string;
+    fullNameHint: string;
+    error: string | null;
+  } | null>(null);
+  const [linkPassword, setLinkPassword] = useState("");
 
   /** Where to land after auth — preserves the page that bounced us here. */
   const next = params.get("next") || "/";
@@ -114,9 +135,54 @@ export default function AuthForm({ mode }: { mode: Mode }) {
     } catch (err) {
       const msg =
         err instanceof ApiError ? err.message : "Something went wrong. Please try again.";
-      toast.error(isSignUp ? "Could not create account" : "Could not sign in", {
+      toast.error(isSignUp ? "Could not create account" : "Could not Login", {
         description: msg,
       });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  /**
+   * A provider hands back an ID token; the backend decides whether that is a new
+   * account or a returning one, so the toast is chosen from its answer rather
+   * than from which page the user happens to be on.
+   *
+   * The one case that stops here is `requiresPassword`: the address already
+   * belongs to a password account, and linking needs that password too. The
+   * token is held so the user can complete the link without signing in again.
+   */
+  function socialFailed(label: string) {
+    toast.error(`Could not continue with ${label}`, {
+      description: `${label} sign-in was cancelled or blocked. Please try again.`,
+    });
+  }
+
+  async function handleSocial(
+    provider: SocialProvider,
+    credential: string,
+    fullNameHint = "",
+    confirmPassword?: string
+  ) {
+    setLoading(true);
+    try {
+      const { created } = await signInWithProvider(provider, credential, {
+        ...(fullNameHint ? { fullName: fullNameHint } : {}),
+        ...(confirmPassword ? { password: confirmPassword } : {}),
+      });
+      setLink(null);
+      toast.success(created ? "Account created" : "Signed in");
+      // A social account has no bank name, and buying is blocked without one.
+      // Send them to finish the profile rather than into a dead end later.
+      router.push(created ? `/profile?next=${encodeURIComponent(next)}` : next);
+    } catch (err) {
+      if (isPasswordLinkRequired(err)) {
+        setLink({ provider, credential, fullNameHint, error: confirmPassword ? err.message : null });
+        return;
+      }
+      const msg =
+        err instanceof ApiError ? err.message : "Something went wrong. Please try again.";
+      toast.error(`Could not continue with ${PROVIDER_LABEL[provider]}`, { description: msg });
     } finally {
       setLoading(false);
     }
@@ -125,6 +191,76 @@ export default function AuthForm({ mode }: { mode: Mode }) {
   return (
     <div className="relative z-10 min-h-screen flex flex-col">
       <Navbar />
+
+      {/* Linking confirmation.
+          The server refuses to attach a social identity to an account that has
+          a password until that password is given, so this is the only way
+          through — not an upsell, and not dismissible into a broken state. */}
+      {link && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm px-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.97 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="w-full max-w-[400px] rounded-2xl bg-[#111] border border-white/10 p-6"
+          >
+            <h2 className="text-lg font-semibold text-white">
+              Link {PROVIDER_LABEL[link.provider]} to your account
+            </h2>
+            <p className="text-sm text-gray-500 mt-2 leading-relaxed">
+              This email already has a Sassaby account with a password. Enter it once
+              and {PROVIDER_LABEL[link.provider]} sign-in will be attached to it.
+            </p>
+
+            <form
+              className="mt-5 flex flex-col gap-3"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!linkPassword || loading) return;
+                handleSocial(link.provider, link.credential, link.fullNameHint, linkPassword);
+              }}
+            >
+              <Field
+                icon={Lock}
+                type="password"
+                autoComplete="current-password"
+                placeholder="Your existing password"
+                value={linkPassword}
+                onChange={(e) => setLinkPassword(e.target.value)}
+                autoFocus
+                required
+              />
+
+              {link.error && <p className="text-xs text-red-400 px-1">{link.error}</p>}
+
+              <button
+                type="submit"
+                disabled={!linkPassword || loading}
+                className="
+                  w-full rounded-xl px-4 py-3 text-sm font-semibold
+                  bg-[#f97316] text-white hover:bg-[#ea6c0e]
+                  disabled:bg-[#1a1a1a] disabled:text-gray-600 disabled:cursor-not-allowed
+                  transition-colors cursor-pointer
+                  flex items-center justify-center gap-2
+                "
+              >
+                {loading && <Loader2 size={16} className="animate-spin shrink-0" />}
+                Link and continue
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setLink(null);
+                  setLinkPassword("");
+                }}
+                className="text-xs text-gray-500 hover:text-gray-300 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+            </form>
+          </motion.div>
+        </div>
+      )}
 
       <main className="flex-1 flex flex-col items-center justify-center px-4 pt-28 pb-20">
         <motion.div
@@ -140,7 +276,7 @@ export default function AuthForm({ mode }: { mode: Mode }) {
             <p className="text-sm text-gray-500 mt-2">
               {isSignUp
                 ? "You'll need an account to trade — it's how we match your payment to your order."
-                : "Sign in to place and track orders."}
+                : "Login to place and track orders."}
             </p>
           </div>
 
@@ -228,9 +364,35 @@ export default function AuthForm({ mode }: { mode: Mode }) {
                   : "Signing in..."
                 : isSignUp
                 ? "Create account"
-                : "Sign in"}
+                : "Login"}
             </motion.button>
           </form>
+
+          {HAS_SOCIAL && (
+            <div className="mt-5 flex flex-col gap-3">
+              <div className="flex items-center gap-3">
+                <span className="h-px flex-1 bg-white/10" />
+                <span className="text-xs text-gray-600 uppercase tracking-wider">or</span>
+                <span className="h-px flex-1 bg-white/10" />
+              </div>
+
+              <GoogleAuthButton
+                mode={mode}
+                disabled={loading}
+                onCredential={(credential) => handleSocial("google", credential)}
+                onError={() => socialFailed("Google")}
+              />
+
+              <div className="flex justify-center">
+                <AppleAuthButton
+                  mode={mode}
+                  disabled={loading}
+                  onCredential={(credential, name) => handleSocial("apple", credential, name)}
+                  onError={() => socialFailed("Apple")}
+                />
+              </div>
+            </div>
+          )}
 
           <p className="text-center text-sm text-gray-500 mt-6">
             {isSignUp ? "Already have an account? " : "New to Sassaby? "}
@@ -238,7 +400,7 @@ export default function AuthForm({ mode }: { mode: Mode }) {
               href={isSignUp ? "/signin" : "/signup"}
               className="text-[#f97316] hover:underline font-medium"
             >
-              {isSignUp ? "Sign in" : "Create one"}
+              {isSignUp ? "Login" : "Create one"}
             </Link>
           </p>
         </motion.div>

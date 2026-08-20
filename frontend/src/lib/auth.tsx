@@ -28,6 +28,8 @@ import {
   refreshSession,
   login as apiLogin,
   register as apiRegister,
+  socialAuth as apiSocialAuth,
+  SocialProvider,
   logout as apiLogout,
   updateProfile as apiUpdateProfile,
 } from "./api";
@@ -63,6 +65,19 @@ interface AuthContextValue {
   /** True until the initial session restore settles — gate redirects on this. */
   loading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
+  /**
+   * Exchange a provider ID token for a session. Resolves with whether this call
+   * created the account, so the caller can say "Account created" rather than
+   * "Signed in" — the user tapped one button either way.
+   *
+   * Rejects with `requiresPassword` on the error body when the address already
+   * belongs to a password account; pass that password in `extra` to link.
+   */
+  signInWithProvider: (
+    provider: SocialProvider,
+    credential: string,
+    extra?: { password?: string; fullName?: string }
+  ) => Promise<{ created: boolean }>;
   signUp: (payload: {
     email: string;
     password: string;
@@ -116,6 +131,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { user: u } = await apiLogin(email, password);
     setUser(u);
   }, []);
+
+  const signInWithProvider = useCallback(
+    async (
+      provider: SocialProvider,
+      credential: string,
+      extra: { password?: string; fullName?: string } = {}
+    ) => {
+      const { user: u, created } = await apiSocialAuth(provider, credential, extra);
+      setUser(u);
+      return { created };
+    },
+    []
+  );
 
   const signUp = useCallback(
     async (payload: {
@@ -212,8 +240,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ user, loading, signIn, signUp, signOut, updateProfile, refresh }),
-    [user, loading, signIn, signUp, signOut, updateProfile, refresh]
+    () => ({ user, loading, signIn, signInWithProvider, signUp, signOut, updateProfile, refresh }),
+    [user, loading, signIn, signInWithProvider, signUp, signOut, updateProfile, refresh]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

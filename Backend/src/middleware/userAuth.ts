@@ -51,13 +51,13 @@ export async function userAuth(
 
   const payload = verifyToken(token);
   if (!payload) {
-    res.status(401).json({ error: "Session expired or invalid. Please sign in again." });
+    res.status(401).json({ error: "Session expired or invalid. Please Login again." });
     return;
   }
 
   const user = await prisma.user.findUnique({ where: { id: payload.userId } });
   if (!user) {
-    res.status(401).json({ error: "Session expired or invalid. Please sign in again." });
+    res.status(401).json({ error: "Session expired or invalid. Please Login again." });
     return;
   }
   if (user.banned) {

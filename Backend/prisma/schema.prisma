@@ -17,8 +17,18 @@ model User {
   id              String   @id
   createdAt       DateTime @default(now())
   email           String   @unique
-  /// bcrypt hash — never the password itself.
-  password        String
+  /// bcrypt hash — never the password itself.  Null for accounts created
+  /// through a social provider, which have no password to hash.
+  password        String?
+  /// Google's `sub` claim — stable per account, and never the email, which a
+  /// Google user can change.  Null for password-only accounts.
+  googleId        String?  @unique
+  /// Apple's `sub` claim.  Note Apple issues a DIFFERENT sub per Services ID,
+  /// so this is only stable while the Services ID stays the same.
+  appleId         String?  @unique
+  /// True only when a provider we trust has asserted the address.  Password
+  /// signups are unverified: nothing checks the inbox on that path.
+  emailVerified   Boolean  @default(false)
   phone           String   @default("")
   fullName        String   @default("")
   /// Name on the bank account the user pays FROM.  A fiat credit whose sender

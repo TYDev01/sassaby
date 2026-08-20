@@ -68,6 +68,10 @@ export interface User {
   kycTier: string;
   /** Operator access. Server-granted only — never settable from the client. */
   isAdmin: boolean;
+  /** Whether a password is set at all — false for social-only accounts. */
+  hasPassword: boolean;
+  /** Which social identities are attached to this account. */
+  providers: { google: boolean; apple: boolean };
 }
 
 // ─── Base URLs ────────────────────────────────────────────────────────────────
@@ -166,6 +170,51 @@ export async function register(payload: {
   });
   setToken(data.token);
   return data;
+}
+
+export type SocialProvider = "google" | "apple";
+
+export interface SocialAuthResult extends AuthResult {
+  /** True when this call created the account rather than signing into one. */
+  created: boolean;
+}
+
+/**
+ * Exchange a provider ID token for a Sassaby session.
+ *
+ * One endpoint per provider covers both signing up and signing in — the server
+ * decides which happened and reports it as `created`, because whether an address
+ * already has an account here is not something an unauthenticated caller should
+ * be able to probe.
+ *
+ * When the address already belongs to a password account, the server answers
+ * 409 with `requiresPassword` instead of linking. Pass that password back in
+ * `password` to complete the link. See `PasswordLinkRequired`.
+ */
+export async function socialAuth(
+  provider: SocialProvider,
+  credential: string,
+  extra: { password?: string; fullName?: string } = {}
+): Promise<SocialAuthResult> {
+  const data = await request<SocialAuthResult>(`/api/auth/${provider}`, {
+    method: "POST",
+    auth: false,
+    body: JSON.stringify({ credential, ...extra }),
+  });
+  setToken(data.token);
+  return data;
+}
+
+/**
+ * True when the server is asking for the existing account's password before it
+ * will attach a social identity to it.
+ *
+ * This is a deliberate stop, not a failure: without the password, an address
+ * someone else registered first could be silently linked to your provider
+ * account. Both proofs together are what establish it is the same person.
+ */
+export function isPasswordLinkRequired(err: unknown): err is ApiError {
+  return err instanceof ApiError && err.body?.requiresPassword === true;
 }
 
 export async function login(email: string, password: string): Promise<AuthResult> {

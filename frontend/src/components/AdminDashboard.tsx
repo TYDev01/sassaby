@@ -314,7 +314,7 @@ function SignInGate() {
       </motion.div>
 
       <h2 className="text-white text-2xl font-bold tracking-tight mb-3">
-        Sign in to continue
+        Login to continue
       </h2>
       <p className="text-gray-400 text-sm max-w-xs mb-8 leading-relaxed">
         The operator dashboard requires an account with admin access.
@@ -326,7 +326,7 @@ function SignInGate() {
           whileTap={{ scale: 0.97 }}
           className="px-8 py-3.5 rounded-xl bg-[#f97316] hover:bg-[#ea6c0e] text-white font-semibold text-sm shadow-lg shadow-[#f97316]/20 transition-all duration-200 cursor-pointer"
         >
-          Sign in
+          Login
         </motion.div>
       </Link>
     </motion.div>

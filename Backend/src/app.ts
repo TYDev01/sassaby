@@ -112,6 +112,10 @@ app.get("/health", (_req, res) => {
 // everything else under /api/auth falls through to the session limiter.
 app.use("/api/auth/login", authLimiter);
 app.use("/api/auth/register", authLimiter);
+// Also a credential endpoint: it mints a full session from a request body, and
+// verifying a forged token costs us a round trip to Google's key endpoint.
+app.use("/api/auth/google", authLimiter);
+app.use("/api/auth/apple", authLimiter);
 app.use("/api/auth", sessionLimiter, authRouter);
 app.use("/api/orders", transferLimiter, ordersRouter);
 app.use("/api/admin/orders", adminLimiter, adminOrdersRouter);
