@@ -539,8 +539,13 @@ export default function TransferPage() {
 
               {missingBankName && (
                 <p className="text-xs text-amber-400 px-1 mt-2">
-                  Add the name on your bank account in your profile — we match every
-                  payment against it before releasing.
+                  <Link
+                    href="/profile?next=%2F"
+                    className="underline underline-offset-2 hover:text-amber-300"
+                  >
+                    Add the name on your bank account
+                  </Link>{" "}
+                  — we match every payment against it before releasing.
                 </p>
               )}
 
@@ -558,7 +563,7 @@ export default function TransferPage() {
               ) : (
                 <Link href="/signin?next=/">
                   <div className="w-full rounded-xl px-4 py-4 text-base font-semibold text-center bg-[#f97316] text-white hover:bg-[#ea6c0e] shadow-lg shadow-[#f97316]/20 cursor-pointer transition-colors">
-                    Sign in to trade
+                    Login to trade
                   </div>
                 </Link>
               )}

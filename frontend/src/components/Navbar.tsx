@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { User, LogOut } from "lucide-react";
+import { User, LogOut, Settings } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -35,6 +35,10 @@ export default function Navbar() {
 
   function handleProfileClick() {
     router.push("/history");
+  }
+
+  function handleSettingsClick() {
+    router.push("/profile");
   }
 
   function handleSignOut() {
@@ -72,7 +76,7 @@ export default function Navbar() {
         {/* Spacer to push icons to the right */}
         <div className="flex-1" />
 
-        {/* Signed out shows only "Sign in"; the profile and sign-out icons are
+        {/* Signed out shows only "Login"; the profile and sign-out icons are
             for an authenticated session. Nothing renders until the session
             restore settles, so neither state flashes on first paint. */}
         <div className="flex items-center gap-1.5">
@@ -92,6 +96,26 @@ export default function Navbar() {
                   }`}
                 >
                   <User size={18} />
+                </motion.button>
+
+                {/* Separate from the orders icon: a profile with no bank name
+                    blocks buying, so it needs its own way in. */}
+                <motion.button
+                  whileHover={{ scale: 1.08 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={handleSettingsClick}
+                  aria-label="Your profile"
+                  className={`relative w-9 h-9 flex items-center justify-center rounded-full transition-colors duration-200 cursor-pointer ${
+                    pathname === "/profile"
+                      ? "text-[#f97316] bg-[#f97316]/10"
+                      : "text-gray-400 hover:text-white hover:bg-white/10"
+                  }`}
+                >
+                  <Settings size={17} />
+                  {/* Unmissable, because the buy flow is blocked until it's set. */}
+                  {!user.bankAccountName && (
+                    <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-amber-400" />
+                  )}
                 </motion.button>
 
                 <motion.button
@@ -115,7 +139,7 @@ export default function Navbar() {
                   transition-colors duration-200
                 "
               >
-                Sign in
+                Login
               </Link>
             ))}
         </div>

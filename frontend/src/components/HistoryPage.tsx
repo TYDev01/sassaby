@@ -107,7 +107,7 @@ function SignInWall() {
       </motion.div>
 
       <h2 className="text-white text-2xl font-bold tracking-tight mb-3">
-        Sign in to see your orders
+        Login to see your orders
       </h2>
       <p className="text-gray-400 text-sm max-w-xs mb-8 leading-relaxed">
         Orders are tied to your account, so we can match your bank payment to the
@@ -126,7 +126,7 @@ function SignInWall() {
               transition-all duration-200 cursor-pointer
             "
           >
-            Sign in
+            Login
           </motion.div>
         </Link>
         <Link href="/signup?next=/history">
@@ -478,7 +478,7 @@ export default function HistoryPage() {
           <p className="text-gray-500 text-sm mt-1">
             {user
               ? "Every order placed on your account"
-              : "Sign in to view your order history"}
+              : "Login to view your order history"}
           </p>
         </motion.div>
 
